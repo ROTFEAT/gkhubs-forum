@@ -43,6 +43,26 @@ add_action('rest_api_init', function () {
 
             $info = ['driver_dirs' => $driver_dirs];
 
+            // 直接读 CloudflareStorage.php 抓 driver name + option key 关键行
+            $cfsrc = $base . '/Cloudflare/CloudflareStorage.php';
+            if (file_exists($cfsrc)) {
+                $src = file_get_contents($cfsrc);
+                preg_match_all('/(public static function (?:identifier|name|defaultRegion|defaultEndpoint|optionsPrefix)\(\)[^{]*\{[^}]+\})/s', $src, $m);
+                $info['cloudflare_static_methods'] = $m[1] ?? [];
+                preg_match_all('/[\'"](mcloud-storage-[a-z0-9-]+)[\'"]/', $src, $m2);
+                $info['cloudflare_referenced_options'] = array_values(array_unique($m2[1] ?? []));
+                preg_match_all('/Environment::Option\([\'"]([a-zA-Z0-9_-]+)[\'"]/', $src, $m3);
+                $info['cloudflare_env_options'] = array_values(array_unique($m3[1] ?? []));
+            }
+            $cfsetsrc = $base . '/Cloudflare/CloudflareStorageSettings.php';
+            if (file_exists($cfsetsrc)) {
+                $src = file_get_contents($cfsetsrc);
+                preg_match_all('/[\'"](mcloud-storage-[a-z0-9-]+)[\'"]/', $src, $m);
+                $info['cloudflareSettings_options'] = array_values(array_unique($m[1] ?? []));
+                preg_match_all('/static \$preset[^=]*=[^;]+;/s', $src, $mp);
+                $info['cloudflareSettings_preset_blob'] = $mp[0][0] ?? null;
+            }
+
             // 读取 Cloudflare driver 配置元数据
             $cf_driver_dir = $base . '/Cloudflare';
             if (is_dir($cf_driver_dir)) {
