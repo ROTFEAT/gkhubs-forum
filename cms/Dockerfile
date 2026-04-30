@@ -35,7 +35,7 @@ RUN apt-get update \
 ENV APACHE_DOCUMENT_ROOT=/var/www/html
 COPY apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 COPY mu-plugins/ /var/www/html/wp-content/mu-plugins/
-COPY plugins/gkhubs-r2/ /var/www/html/wp-content/plugins/gkhubs-r2/
+COPY plugins/gkhubs-r2-pro/ /var/www/html/wp-content/plugins/gkhubs-r2-pro/
 COPY --from=builder /vendor/ilab-media-tools /var/www/html/wp-content/plugins/ilab-media-tools
 COPY healthz.php /var/www/html/healthz.php
 COPY docker-entrypoint-init.sh /usr/local/bin/gkhubs-init.sh

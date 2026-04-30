@@ -17,7 +17,9 @@ fi
 
 # 2. 弃用 Media Cloud（Freemius 许可门拦着）；启用自写的 gkhubs-r2 插件
 wp --allow-root plugin deactivate ilab-media-tools 2>/dev/null || true
-wp --allow-root plugin activate gkhubs-r2 2>/dev/null || true
+wp --allow-root plugin activate gkhubs-r2-pro 2>/dev/null || true
+# 兼容老激活：曾经叫 gkhubs-r2，被新名替换
+wp --allow-root plugin deactivate gkhubs-r2 2>/dev/null || true
 
 # 3. 确保 bot 用户存在（role=editor —— 能编辑文章但管不了站点设置）
 if ! wp --allow-root user get "$BOT_USER" >/dev/null 2>&1; then
