@@ -28,6 +28,49 @@ add_action('rest_api_init', function () {
         },
     ]);
 
+    // 临时 debug：直接探测 wp_handle_upload 等核心 filter 是否被 Media Cloud 注册
+    register_rest_route('gkhubs/v1', '/debug-hooks', [
+        'methods' => 'GET',
+        'permission_callback' => function () { return current_user_can('edit_posts'); },
+        'callback' => function () {
+            global $wp_filter;
+            $hooks = ['wp_handle_upload', 'wp_handle_upload_prefilter', 'wp_get_attachment_url', 'wp_update_attachment_metadata', 'add_attachment'];
+            $out = [];
+            foreach ($hooks as $h) {
+                $callbacks = [];
+                if (isset($wp_filter[$h])) {
+                    foreach ($wp_filter[$h]->callbacks as $prio => $cbs) {
+                        foreach ($cbs as $cb) {
+                            $fn = $cb['function'];
+                            if (is_array($fn)) {
+                                $callbacks[] = "$prio: " . (is_object($fn[0]) ? get_class($fn[0]) : $fn[0]) . "::" . $fn[1];
+                            } elseif (is_string($fn)) {
+                                $callbacks[] = "$prio: $fn";
+                            } elseif ($fn instanceof Closure) {
+                                $callbacks[] = "$prio: <Closure>";
+                            }
+                        }
+                    }
+                }
+                $out[$h] = $callbacks;
+            }
+            // mediacloud_storage_tool helper
+            $helpers = [];
+            foreach (['mediacloud_storage_tool', 'mediacloud_image_tool', 'mediacloud'] as $h) {
+                $helpers[$h] = function_exists($h);
+            }
+            // 看 plugin 入口
+            $entry = WP_PLUGIN_DIR . '/ilab-media-tools/ilab-media-tools.php';
+            $entry_size = file_exists($entry) ? filesize($entry) : 0;
+            return [
+                'hooks' => $out,
+                'helpers_exist' => $helpers,
+                'entry_file_size' => $entry_size,
+                'wp_plugin_dir' => WP_PLUGIN_DIR,
+            ];
+        },
+    ]);
+
     // 临时 debug：列出 Media Cloud 支持的 driver 名 + StorageTool 状态
     register_rest_route('gkhubs/v1', '/debug-drivers', [
         'methods' => 'GET',
