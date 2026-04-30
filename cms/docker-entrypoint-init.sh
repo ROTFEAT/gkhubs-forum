@@ -15,9 +15,9 @@ if ! wp --allow-root core is-installed 2>/dev/null; then
     exit 0
 fi
 
-# 2. 弃用 Media Cloud（被 Freemius 许可门拦着，hook 永远不注册），
-#    R2 上传改由 mu-plugins/03-gkhubs-r2-upload.php 直接做（SigV4 PUT）
+# 2. 弃用 Media Cloud（Freemius 许可门拦着）；启用自写的 gkhubs-r2 插件
 wp --allow-root plugin deactivate ilab-media-tools 2>/dev/null || true
+wp --allow-root plugin activate gkhubs-r2 2>/dev/null || true
 
 # 3. 确保 bot 用户存在（role=editor —— 能编辑文章但管不了站点设置）
 if ! wp --allow-root user get "$BOT_USER" >/dev/null 2>&1; then
