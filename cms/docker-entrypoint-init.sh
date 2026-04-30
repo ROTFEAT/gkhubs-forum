@@ -15,8 +15,9 @@ if ! wp --allow-root core is-installed 2>/dev/null; then
     exit 0
 fi
 
-# 2. 激活内置插件（幂等 —— 已激活时 wp-cli 是 no-op）
-wp --allow-root plugin activate ilab-media-tools 2>/dev/null || true
+# 2. 弃用 Media Cloud（被 Freemius 许可门拦着，hook 永远不注册），
+#    R2 上传改由 mu-plugins/03-gkhubs-r2-upload.php 直接做（SigV4 PUT）
+wp --allow-root plugin deactivate ilab-media-tools 2>/dev/null || true
 
 # 3. 确保 bot 用户存在（role=editor —— 能编辑文章但管不了站点设置）
 if ! wp --allow-root user get "$BOT_USER" >/dev/null 2>&1; then
@@ -40,27 +41,17 @@ fi
 # 4. 用 wp option update 配 Media Cloud → R2（比 filter hook 可靠 ——
 #    hook 名跨版本会变。所有 update 都是幂等的。）
 if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ]; then
-    echo "[gkhubs-init] 配置 R2 offload (driver=cloudflare)"
-    # Media Cloud v4.6.4 的 R2 实际是用 `Driver/Cloudflare`，driver identifier
-    # 是 `cloudflare`（不是 `s3`），且 option key 是 access-key/secret
-    # （不是 access-key-id/access-secret）。
-    wp --allow-root option update mcloud-storage-provider "cloudflare"
-    wp --allow-root option update mcloud-storage-driver "cloudflare"
-    wp --allow-root option update mcloud-storage-s3-access-key "$R2_ACCESS_KEY"
-    wp --allow-root option update mcloud-storage-s3-secret "$R2_SECRET"
-    wp --allow-root option update mcloud-storage-s3-bucket "$R2_BUCKET"
-    wp --allow-root option update mcloud-storage-s3-region "auto"
-    wp --allow-root option update mcloud-storage-s3-endpoint "$R2_ENDPOINT"
-    # 清理旧的错误 key，避免残留误导
-    wp --allow-root option delete mcloud-storage-s3-access-key-id 2>/dev/null || true
-    wp --allow-root option delete mcloud-storage-s3-access-secret 2>/dev/null || true
-    # 布尔字段：必须写字面量 'true'/'false'（Environment::Option 用
-    # `strtolower($val) === 'true'` 字符串匹配；存 1/0/JSON-bool 都不匹配）
-    wp --allow-root option update mcloud-storage-s3-use-path-style-endpoint "true"
-    wp --allow-root option update mcloud_show_wizard "false"
-    wp --allow-root option update mcloud-tool-enabled-storage "true"
-    wp --allow-root option update mcloud-storage-test-passed "true"
-    wp --allow-root cache flush 2>/dev/null || true
+    echo "[gkhubs-init] R2 凭证齐备 —— 由 03-gkhubs-r2-upload.php 接管上传"
+    # 清理 Media Cloud 留的 option（保持 wp_options 表干净）
+    for k in mcloud-storage-driver mcloud-storage-provider mcloud-storage-s3-access-key \
+             mcloud-storage-s3-access-key-id mcloud-storage-s3-secret \
+             mcloud-storage-s3-access-secret mcloud-storage-s3-bucket \
+             mcloud-storage-s3-region mcloud-storage-s3-endpoint \
+             mcloud-storage-s3-use-path-style-endpoint mcloud_show_wizard \
+             mcloud-tool-enabled-storage mcloud-storage-test-passed \
+             mcloud-pinned-tools mcloud-has-run; do
+        wp --allow-root option delete "$k" 2>/dev/null || true
+    done
 fi
 
 echo "[gkhubs-init] done"
