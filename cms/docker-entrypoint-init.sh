@@ -53,6 +53,12 @@ if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY
     wp --allow-root option update mcloud-storage-s3-use-path-style-endpoint "1"
     # 跳过 setup wizard —— 配置已通过 env 注入，无需 UI 引导
     wp --allow-root option update mcloud_show_wizard "0"
+    # 启用 storage tool（pinned 只控制菜单显示，实际生效需要 enabled）
+    wp --allow-root option update mcloud-tool-enabled-storage "1"
+    # 标记连接测试已通过，跳过插件的可达性校验
+    wp --allow-root option update mcloud-storage-test-passed "1"
+    # 强制刷新 ilab-media-tools 内部缓存
+    wp --allow-root cache flush 2>/dev/null || true
 fi
 
 echo "[gkhubs-init] done"
