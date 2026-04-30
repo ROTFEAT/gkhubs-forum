@@ -43,6 +43,33 @@ add_action('rest_api_init', function () {
 
             $info = ['driver_dirs' => $driver_dirs];
 
+            // 读取 Cloudflare driver 配置元数据
+            $cf_driver_dir = $base . '/Cloudflare';
+            if (is_dir($cf_driver_dir)) {
+                $files = [];
+                foreach (glob($cf_driver_dir . '/*.php') as $f) {
+                    $files[] = basename($f);
+                }
+                $info['cloudflare_files'] = $files;
+
+                // 找 driver-info 配置文件
+                foreach (glob($cf_driver_dir . '/configs/*.config.php') as $cfg) {
+                    $info['cloudflare_config_file'] = basename($cfg);
+                    $cfgData = include $cfg;
+                    if (is_array($cfgData)) {
+                        $info['cloudflare_config_keys'] = array_keys($cfgData);
+                        if (isset($cfgData['name'])) $info['cloudflare_driver_name'] = $cfgData['name'];
+                        if (isset($cfgData['settings']['groups'])) {
+                            foreach ($cfgData['settings']['groups'] as $g) {
+                                if (!empty($g['options'])) {
+                                    $info['cloudflare_options'] = array_merge($info['cloudflare_options'] ?? [], array_keys($g['options']));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 尝试找 StorageManager 类
             $candidates = [
                 '\\MediaCloud\\Plugin\\Tools\\Storage\\StorageManager',
