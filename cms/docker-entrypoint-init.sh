@@ -40,16 +40,20 @@ fi
 # 4. 用 wp option update 配 Media Cloud → R2（比 filter hook 可靠 ——
 #    hook 名跨版本会变。所有 update 都是幂等的。）
 if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ]; then
-    echo "[gkhubs-init] 配置 R2 offload"
-    # 首次部署后请验证 option key 前缀对得上 Media Cloud 实际版本：
-    #   wp --allow-root option list --search='mcloud-storage*' --format=table
-    # 若 4.6.4 用的是其他 key，这里要相应调整。
-    wp --allow-root option update mcloud-storage-driver "s3"
-    wp --allow-root option update mcloud-storage-s3-access-key-id "$R2_ACCESS_KEY"
-    wp --allow-root option update mcloud-storage-s3-access-secret "$R2_SECRET"
+    echo "[gkhubs-init] 配置 R2 offload (driver=cloudflare)"
+    # Media Cloud v4.6.4 的 R2 实际是用 `Driver/Cloudflare`，driver identifier
+    # 是 `cloudflare`（不是 `s3`），且 option key 是 access-key/secret
+    # （不是 access-key-id/access-secret）。
+    wp --allow-root option update mcloud-storage-provider "cloudflare"
+    wp --allow-root option update mcloud-storage-driver "cloudflare"
+    wp --allow-root option update mcloud-storage-s3-access-key "$R2_ACCESS_KEY"
+    wp --allow-root option update mcloud-storage-s3-secret "$R2_SECRET"
     wp --allow-root option update mcloud-storage-s3-bucket "$R2_BUCKET"
     wp --allow-root option update mcloud-storage-s3-region "auto"
     wp --allow-root option update mcloud-storage-s3-endpoint "$R2_ENDPOINT"
+    # 清理旧的错误 key，避免残留误导
+    wp --allow-root option delete mcloud-storage-s3-access-key-id 2>/dev/null || true
+    wp --allow-root option delete mcloud-storage-s3-access-secret 2>/dev/null || true
     # 布尔字段：必须写字面量 'true'/'false'（Environment::Option 用
     # `strtolower($val) === 'true'` 字符串匹配；存 1/0/JSON-bool 都不匹配）
     wp --allow-root option update mcloud-storage-s3-use-path-style-endpoint "true"
