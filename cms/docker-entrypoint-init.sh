@@ -50,14 +50,12 @@ if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY
     wp --allow-root option update mcloud-storage-s3-bucket "$R2_BUCKET"
     wp --allow-root option update mcloud-storage-s3-region "auto"
     wp --allow-root option update mcloud-storage-s3-endpoint "$R2_ENDPOINT"
-    # 布尔类字段用 JSON 写真 true/false（Environment::Option 用 === true 严格匹配）
-    wp --allow-root option update mcloud-storage-s3-use-path-style-endpoint --format=json true
-    # 跳过 setup wizard
-    wp --allow-root option update mcloud_show_wizard --format=json false
-    # 启用 storage tool（pinned 仅控制菜单显示）
-    wp --allow-root option update mcloud-tool-enabled-storage --format=json true
-    # 标记连接测试已通过
-    wp --allow-root option update mcloud-storage-test-passed --format=json true
+    # 布尔字段：必须写字面量 'true'/'false'（Environment::Option 用
+    # `strtolower($val) === 'true'` 字符串匹配；存 1/0/JSON-bool 都不匹配）
+    wp --allow-root option update mcloud-storage-s3-use-path-style-endpoint "true"
+    wp --allow-root option update mcloud_show_wizard "false"
+    wp --allow-root option update mcloud-tool-enabled-storage "true"
+    wp --allow-root option update mcloud-storage-test-passed "true"
     wp --allow-root cache flush 2>/dev/null || true
 fi
 
