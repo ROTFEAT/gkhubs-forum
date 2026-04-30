@@ -1,99 +1,99 @@
-# Plan 1: CMS + DB — Implementation Plan
+# Plan 1：CMS + DB —— 实施计划
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行者须知：** 必须使用 superpowers:subagent-driven-development（如果可用子代理）或 superpowers:executing-plans 来执行本计划。每一步用 `- [ ]` 复选框标记进度。
 
-**Goal:** Deploy a Headless WordPress + MySQL stack to Dokploy (152.53.53.84) with two custom post types (`gk_figure`, `gk_listing`), three custom REST endpoints, R2 media offload, and a dedicated bot user — ready to receive crawler writes.
+**目标：** 在 Dokploy（152.53.53.84）部署一套 Headless WordPress + MySQL，包含两个自定义文章类型（`gk_figure`、`gk_listing`）、四个自定义 REST 端点、R2 媒体卸载，以及一个专用 bot 用户——具备接收爬虫写入的能力。
 
-**Architecture:** Single-container WP image based on `wordpress:6.5-apache`, plus a separate `mysql:8.0` container. CPTs registered via must-use plugins (no UI plugin dependency). Custom REST endpoints in mu-plugin. First-run idempotent bootstrap script creates bot user + activates plugins. Tests embedded in Dockerfile multi-stage build (static checks) plus a `smoke.sh` integration test using docker network.
+**架构：** 单容器 WP 镜像（基于 `wordpress:6.5-apache`）+ 独立 `mysql:8.0` 容器。CPT 通过 mu-plugins 注册，不依赖任何 UI 插件。自定义 REST 端点写在 mu-plugin 里。首次启动通过幂等 bootstrap 脚本创建 bot 用户并激活插件。测试嵌入 Dockerfile 多阶段构建（静态检查），加上一份用 docker network 串起来的 `smoke.sh` 集成测试。
 
-**Tech Stack:** WordPress 6.5, PHP 8.2, Apache, MySQL 8.0, Media Cloud (ILAB) plugin, Cloudflare R2 (S3 API), bash + curl + jq for tests.
+**技术栈：** WordPress 6.5、PHP 8.2、Apache、MySQL 8.0、Media Cloud (ILAB) 插件、Cloudflare R2（S3 协议）、bash + curl + jq 跑测试。
 
-**Spec reference:** [`docs/superpowers/specs/2026-04-30-gkhubs-aggregation-mvp-design.md`](../specs/2026-04-30-gkhubs-aggregation-mvp-design.md) — sections 3, 4.2, 4.3, 6.
+**Spec 引用：** [`docs/superpowers/specs/2026-04-30-gkhubs-aggregation-mvp-design.md`](../specs/2026-04-30-gkhubs-aggregation-mvp-design.md) —— 第 3、4.2、4.3、6 节。
 
-**Server / credentials:**
-- Dokploy host: `152.53.53.84`
-- Dokploy API key: stored in user instruction (do not echo); retrieve from session memory or ask user
-- R2 bucket: to be created — `gkhubs-media`
-- DNS: `cms.gkhubs.com` will point to this service after Phase 5
+**服务器与凭据：**
+- Dokploy 主机：`152.53.53.84`
+- Dokploy API key：用户已在会话中提供（不复读，从会话记忆里取，或问用户）
+- R2 桶：待创建——`gkhubs-media`
+- DNS：`cms.gkhubs.com` 在 Phase 5 才会指过来
 
 ---
 
-## File Structure
+## 文件结构
 
-After Plan 1, the repo looks like:
+Plan 1 完成后，仓库布局：
 
 ```
 GKHUBS-forum/
 ├── README.md
 ├── .gitignore
-├── Makefile                          # convenience targets (test, build)
+├── Makefile                          # 便捷目标（test、build）
 ├── cms/
-│   ├── Dockerfile                    # multi-stage: builder → test → runtime
-│   ├── apache-vhost.conf             # vhost tuned for headless (no public uploads dir)
-│   ├── docker-entrypoint-init.sh     # idempotent first-run bootstrap
-│   ├── healthz.php                   # standalone health endpoint
+│   ├── Dockerfile                    # 多阶段：builder → test → runtime
+│   ├── apache-vhost.conf             # 为 headless 调过的 vhost
+│   ├── docker-entrypoint-init.sh     # 幂等的首次启动 bootstrap
+│   ├── healthz.php                   # 不依赖 WP 的健康检查端点
 │   ├── mu-plugins/
-│   │   ├── 00-gkhubs-cpt.php         # register gk_figure, gk_listing
-│   │   ├── 01-gkhubs-rest.php        # custom REST endpoints
+│   │   ├── 00-gkhubs-cpt.php         # 注册 gk_figure、gk_listing
+│   │   ├── 01-gkhubs-rest.php        # 自定义 REST 端点
 │   │   └── 99-gkhubs-health.php      # /wp-json/gkhubs/v1/health
 │   ├── tests/
-│   │   ├── smoke.sh                  # full integration test (mysql + wp + curl)
-│   │   ├── static-check.sh           # called inside Dockerfile test stage
+│   │   ├── smoke.sh                  # 完整集成测试（mysql + wp + curl）
+│   │   ├── static-check.sh           # 在 Dockerfile test 阶段调用
 │   │   └── fixtures/
 │   │       ├── figure-sample.json
 │   │       └── listing-sample.json
 │   └── plugins-vendor/
-│       └── .gitignore                # downloaded at build, not committed
+│       └── .gitignore                # 构建时下载，不入库
 ├── docs/
 │   ├── superpowers/
-│   │   ├── specs/  (existing)
-│   │   └── plans/  (this file lives here)
-└── (other service dirs added in later plans)
+│   │   ├── specs/  （已存在）
+│   │   └── plans/  （本文件位于此）
+└── （其他服务目录在后续 plan 中加入）
 ```
 
-**Boundary notes:**
-- `mu-plugins/*.php` — each file ≤ 200 lines, one concern per file
-- `tests/smoke.sh` — does **not** depend on host's WP or DB; spins up everything in docker
-- `docker-entrypoint-init.sh` — runs once on first boot, idempotent (re-runs on rebuild are no-ops)
+**边界注解：**
+- `mu-plugins/*.php` —— 每个文件 ≤ 200 行，职责单一
+- `tests/smoke.sh` —— **不依赖**宿主机 WP/DB；所有依赖都用 docker 起
+- `docker-entrypoint-init.sh` —— 首次启动时跑一次，幂等（重建后再跑无副作用）
 
 ---
 
-## Pre-flight Checklist (do once, by user)
+## 预检清单（用户执行一次）
 
-- [ ] **P-1**: Confirm Dokploy is reachable
+- [ ] **P-1**：确认 Dokploy 可达
   ```bash
   curl -sf -H "x-api-key: $DOKPLOY_API_KEY" https://152.53.53.84:3000/api/trpc/admin.getOne | jq .
   ```
-  Expected: 200 with admin info JSON. If 401 → wrong key. If timeout → check server.
+  预期：返回 200 并附带 admin 信息 JSON。401 → key 错。超时 → 检查服务器。
 
-- [ ] **P-2**: Create R2 bucket `gkhubs-media` in Cloudflare dashboard
-  - Settings → R2 → Create bucket → name `gkhubs-media`, location auto
-  - Save: account ID, access key ID, secret access key, S3 API endpoint URL
-  - Public access: **disabled** (we'll serve via Cloudflare CDN with a custom domain mapping later)
+- [ ] **P-2**：在 Cloudflare 控制台创建 R2 桶 `gkhubs-media`
+  - Settings → R2 → Create bucket → 名称 `gkhubs-media`，位置 auto
+  - 记录：account ID、access key ID、secret access key、S3 API endpoint URL
+  - 公开访问：**关闭**（之后通过 Cloudflare CDN + 自定义域名映射对外服务）
 
-- [ ] **P-3**: Decide cms admin password (16+ chars, store in your password manager)
+- [ ] **P-3**：定一个 cms admin 密码（≥16 位，存进密码管理器）
 
-- [ ] **P-4**: Confirm Docker BuildKit is on
+- [ ] **P-4**：确认 Docker BuildKit 已启用
   ```bash
   docker buildx version
   ```
-  Expected: prints version. If missing, install Docker Desktop ≥ 20.10 or `export DOCKER_BUILDKIT=1` for every build. The plan uses heredoc `COPY <<'EOF'` which requires BuildKit.
+  预期：打印版本号。如果缺失，安装 Docker Desktop ≥ 20.10，或每次构建前 `export DOCKER_BUILDKIT=1`。本计划用了 heredoc `COPY <<'EOF'`，必须 BuildKit。
 
-If any pre-flight fails, **stop and fix before continuing**.
+任一预检失败，**停下处理后再继续**。
 
-> **Note on secret storage**: the plan refers to "1Password" as shorthand for your password manager. Substitute with whatever you actually use (Bitwarden, Apple Keychain, plain `~/.gkhubs-secrets.txt`, etc.) — the only requirement is that secrets don't end up in git.
+> **关于密码管理器**：本计划里凡是写"密码管理器"的位置，请替换成你实际用的工具（Bitwarden、Apple 钥匙串、`~/.gkhubs-secrets.txt` 都行）—— 唯一硬要求是密码不要进 git。
 
 ---
 
-## Task 1: Repo skeleton & root files
+## 任务 1：仓库骨架与根级文件
 
-**Files:**
-- Create: `README.md`
-- Create: `.gitignore`
-- Create: `Makefile`
-- Create: `cms/.gitkeep`
+**文件：**
+- 创建：`README.md`
+- 创建：`.gitignore`
+- 创建：`Makefile`
+- 创建：`cms/.gitkeep`
 
-- [ ] **Step 1: Initialize git**
+- [ ] **步骤 1：初始化 git**
 
 ```bash
 cd /Users/wyx/Documents/GitHub/GKHUBS-forum
@@ -101,7 +101,7 @@ git init
 git branch -m main
 ```
 
-- [ ] **Step 2: Write `.gitignore`**
+- [ ] **步骤 2：写 `.gitignore`**
 
 ```gitignore
 # OS / IDE
@@ -117,37 +117,37 @@ __pycache__/
 dist/
 build/
 
-# Plugin downloads (re-fetched at build)
+# 构建时下载的插件
 cms/plugins-vendor/*
 !cms/plugins-vendor/.gitignore
 
-# Local env
+# 本地环境
 .env
 .env.local
 *.local
 
-# Logs
+# 日志
 *.log
 ```
 
-- [ ] **Step 3: Write `README.md`**
+- [ ] **步骤 3：写 `README.md`**
 
 ```markdown
-# gkhubs.com Aggregation Hub
+# gkhubs.com 聚合站
 
-GK figure information aggregation site. See `docs/superpowers/specs/` for design and `docs/superpowers/plans/` for implementation plans.
+GK 手办信息聚合站。设计文档见 `docs/superpowers/specs/`，实施计划见 `docs/superpowers/plans/`。
 
-## Services
-- `cms/` — Headless WordPress
-- `web/` — Next.js frontend (Plan 4)
-- `crawler/` — Python CLI (Plan 3)
-- `watermark/` — IOPaint service (Plan 2)
+## 服务
+- `cms/` —— Headless WordPress
+- `web/` —— Next.js 前端（Plan 4）
+- `crawler/` —— Python CLI（Plan 3）
+- `watermark/` —— IOPaint 服务（Plan 2）
 
-## Quickstart
-See current plan in `docs/superpowers/plans/`.
+## 快速开始
+看 `docs/superpowers/plans/` 里的当前 plan。
 ```
 
-- [ ] **Step 4: Write `Makefile`**
+- [ ] **步骤 4：写 `Makefile`**
 
 ```makefile
 .PHONY: cms-build cms-test cms-smoke
@@ -163,24 +163,24 @@ cms-smoke: cms-build
 	bash cms/tests/smoke.sh
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [ ] **步骤 5：验证并提交**
 
 ```bash
 git add README.md .gitignore Makefile cms/.gitkeep
-git commit -m "chore: initialize repo skeleton"
+git commit -m "chore: 初始化仓库骨架"
 ```
 
-Expected: clean commit, `git status` shows clean tree.
+预期：提交干净，`git status` 显示工作树为空。
 
 ---
 
-## Task 2: Apache vhost & healthz
+## 任务 2：Apache vhost 与 healthz
 
-**Files:**
-- Create: `cms/apache-vhost.conf`
-- Create: `cms/healthz.php`
+**文件：**
+- 创建：`cms/apache-vhost.conf`
+- 创建：`cms/healthz.php`
 
-- [ ] **Step 1: Write `cms/apache-vhost.conf`**
+- [ ] **步骤 1：写 `cms/apache-vhost.conf`**
 
 ```apache
 <VirtualHost *:80>
@@ -193,12 +193,12 @@ Expected: clean commit, `git status` shows clean tree.
         Require all granted
     </Directory>
 
-    # Disable directory listing for uploads (offloaded to R2 anyway)
+    # 关闭 uploads 目录列表（反正图片都在 R2）
     <Directory /var/www/html/wp-content/uploads>
         Options -Indexes
     </Directory>
 
-    # Health endpoint — bypass WP entirely for low-latency checks
+    # 健康端点 —— 完全绕过 WP，保证低延迟
     Alias /healthz /var/www/html/healthz.php
     <Location /healthz>
         Require all granted
@@ -209,12 +209,12 @@ Expected: clean commit, `git status` shows clean tree.
 </VirtualHost>
 ```
 
-- [ ] **Step 2: Write `cms/healthz.php`**
+- [ ] **步骤 2：写 `cms/healthz.php`**
 
 ```php
 <?php
-// Standalone — no WP bootstrap, used by Dokploy healthcheck
-// Must respond <100ms even if WP is slow.
+// 独立运行 —— 不引导 WP，用于 Dokploy 健康检查。
+// 即使 WP 慢，也必须 100ms 内返回。
 header('Content-Type: application/json');
 $db_ok = false;
 $error = null;
@@ -236,85 +236,85 @@ http_response_code($db_ok ? 200 : 503);
 echo json_encode(['ok' => $db_ok, 'error' => $error]);
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3：提交**
 
 ```bash
 git add cms/apache-vhost.conf cms/healthz.php
-git commit -m "feat(cms): apache vhost + standalone healthz"
+git commit -m "feat(cms): apache vhost 与独立 healthz 端点"
 ```
 
 ---
 
-## Task 3: Static-check script (will be called from Dockerfile test stage)
+## 任务 3：静态检查脚本（在 Dockerfile test 阶段调用）
 
-**Files:**
-- Create: `cms/tests/static-check.sh`
+**文件：**
+- 创建：`cms/tests/static-check.sh`
 
-- [ ] **Step 1: Write the failing check first**
+- [ ] **步骤 1：先写检查脚本**
 
 ```bash
 #!/usr/bin/env bash
-# cms/tests/static-check.sh — runs inside Docker test stage; no network/DB.
+# cms/tests/static-check.sh —— 在 Docker test 阶段内运行，无网络/无 DB 依赖。
 set -euo pipefail
 
-echo "==> PHP syntax check"
+echo "==> PHP 语法检查"
 find mu-plugins healthz.php -type f -name "*.php" -print0 \
   | xargs -0 -n1 php -l
 
-echo "==> Bash syntax check"
+echo "==> Bash 语法检查"
 find tests -type f -name "*.sh" -print0 \
   | xargs -0 -n1 bash -n
 
-echo "==> Require at least one mu-plugin"
+echo "==> 至少要有一个 mu-plugin"
 test -n "$(find mu-plugins -maxdepth 1 -name '*.php' -print -quit)" \
-  || { echo "FAIL: mu-plugins/ has no PHP files"; exit 1; }
+  || { echo "FAIL: mu-plugins/ 没有 PHP 文件"; exit 1; }
 
-echo "==> JSON fixture validation"
+echo "==> JSON fixture 验证"
 for f in tests/fixtures/*.json; do
     [ -f "$f" ] || continue
     python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"
 done
 
-echo "==> All static checks passed"
+echo "==> 静态检查全部通过"
 ```
 
-- [ ] **Step 2: Make it executable**
+- [ ] **步骤 2：加可执行权限**
 
 ```bash
 chmod +x cms/tests/static-check.sh
 ```
 
-- [ ] **Step 3: Run it locally to verify (will fail — no mu-plugins yet)**
+- [ ] **步骤 3：本地运行验证（应当失败 —— 还没 mu-plugins）**
 
 ```bash
 cd cms && bash tests/static-check.sh; cd ..
 ```
 
-Expected: failure due to no `mu-plugins` directory yet. **This proves the check works** — we'll re-run in Task 5+ after creating mu-plugins.
+预期：因为 `mu-plugins/` 还没建/还没 PHP 文件而失败。**这就证明检查有效** —— 任务 5+ 创建 mu-plugins 后会重跑。
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4：提交**
 
 ```bash
 git add cms/tests/static-check.sh
-git commit -m "test(cms): static-check script for Docker test stage"
+git commit -m "test(cms): Docker test 阶段用的静态检查脚本"
 ```
 
 ---
 
-## Task 4: Multi-stage Dockerfile (skeleton)
+## 任务 4：多阶段 Dockerfile（骨架）
 
-**Files:**
-- Create: `cms/Dockerfile`
-- Create: `cms/mu-plugins/.gitkeep`
-- Create: `cms/tests/fixtures/.gitkeep`
-- Create: `cms/plugins-vendor/.gitignore`
+**文件：**
+- 创建：`cms/Dockerfile`
+- 创建：`cms/mu-plugins/.gitkeep`
+- 创建：`cms/tests/fixtures/.gitkeep`
+- 创建：`cms/plugins-vendor/.gitignore`
 
-- [ ] **Step 1: Author multi-stage Dockerfile**
+- [ ] **步骤 1：写多阶段 Dockerfile**
 
 ```dockerfile
 # syntax=docker/dockerfile:1.6
 
-# ---- builder: download external plugins ----
+# ---- builder：下载外部插件 ----
 FROM alpine:3.19 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
 WORKDIR /vendor
@@ -324,7 +324,7 @@ RUN curl -fsSL -o ilab-media-tools.zip \
  && unzip -q ilab-media-tools.zip \
  && rm ilab-media-tools.zip
 
-# ---- test: static checks (fails build if anything's broken) ----
+# ---- test：静态检查（任何一处错就 fail build） ----
 FROM wordpress:6.5-apache AS test
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 bash file \
@@ -335,10 +335,10 @@ COPY healthz.php ./healthz.php
 COPY tests ./tests
 RUN chmod +x tests/*.sh && bash tests/static-check.sh
 
-# ---- runtime: actual image ----
+# ---- runtime：实际部署的镜像 ----
 FROM wordpress:6.5-apache AS runtime
 
-# Install wp-cli (required by gkhubs-init.sh and smoke tests)
+# 装 wp-cli（gkhubs-init.sh 与 smoke 测试都依赖它）
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates less mariadb-client \
  && curl -fsSL -o /usr/local/bin/wp \
@@ -356,9 +356,9 @@ RUN chmod +x /usr/local/bin/gkhubs-init.sh \
  && a2enmod rewrite headers \
  && chown -R www-data:www-data /var/www/html
 
-# Wrap official entrypoint:
-#   - Apache stays PID 1 (signal forwarding intact)
-#   - A background watcher polls /healthz; once it answers 200, run init once
+# 包装官方 entrypoint：
+#   - Apache 占据 PID 1（保证信号转发正常）
+#   - 后台 watcher 轮询 /healthz；一旦返回 200 就跑一次 init
 COPY <<'EOF' /usr/local/bin/gkhubs-entrypoint.sh
 #!/usr/bin/env bash
 set -e
@@ -377,76 +377,76 @@ RUN chmod +x /usr/local/bin/gkhubs-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/gkhubs-entrypoint.sh"]
 ```
 
-- [ ] **Step 2: Stub `docker-entrypoint-init.sh`**
+- [ ] **步骤 2：占位 `docker-entrypoint-init.sh`**
 
 ```bash
 #!/usr/bin/env bash
 # cms/docker-entrypoint-init.sh
-# Idempotent first-run bootstrap. Re-runnable safely.
+# 幂等的首次启动 bootstrap，可放心重跑。
 set -euo pipefail
 echo "[gkhubs-init] start"
-echo "[gkhubs-init] (placeholder — populated in Task 8)"
+echo "[gkhubs-init] (占位 —— 任务 10 才填实际逻辑)"
 echo "[gkhubs-init] done"
 ```
 
-- [ ] **Step 3: Stub `cms/plugins-vendor/.gitignore`**
+- [ ] **步骤 3：占位 `cms/plugins-vendor/.gitignore`**
 
 ```
 *
 !.gitignore
 ```
 
-- [ ] **Step 4: Build (test stage will fail — no mu-plugins yet)**
+- [ ] **步骤 4：构建（test 阶段会失败 —— 还没 mu-plugins）**
 
 ```bash
 make cms-build
 ```
 
-Expected: failure at `static-check.sh` since `mu-plugins/` is empty (only .gitkeep). **Good — fails-fast working.**
+预期：因为 `mu-plugins/` 只有 `.gitkeep`，`static-check.sh` 在"至少要有一个 mu-plugin"那一步失败。**好 —— 红绿门控生效。**
 
-- [ ] **Step 5: Add a tiny stub mu-plugin so build can complete**
+- [ ] **步骤 5：加一个最小占位 mu-plugin 让 build 通过**
 
-Write `cms/mu-plugins/00-gkhubs-cpt.php`:
+写 `cms/mu-plugins/00-gkhubs-cpt.php`：
 
 ```php
 <?php
 /**
  * Plugin Name: gkhubs CPT (placeholder)
- * Description: Will register gk_figure / gk_listing — populated in Task 5.
+ * Description: 任务 5 才注册 gk_figure / gk_listing
  */
 defined('ABSPATH') || exit;
 ```
 
-- [ ] **Step 6: Build again — must succeed**
+- [ ] **步骤 6：再次构建 —— 必须成功**
 
 ```bash
 make cms-build
 ```
 
-Expected: both `gkhubs-cms:test` and `gkhubs-cms:dev` images built.
+预期：`gkhubs-cms:test` 与 `gkhubs-cms:dev` 两个镜像都构建出来。
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7：提交**
 
 ```bash
 git add cms/Dockerfile cms/docker-entrypoint-init.sh \
         cms/plugins-vendor/.gitignore cms/mu-plugins/00-gkhubs-cpt.php \
         cms/mu-plugins/.gitkeep cms/tests/fixtures/.gitkeep
-git commit -m "feat(cms): multi-stage Dockerfile with test gate + media-cloud bundling"
+git commit -m "feat(cms): 多阶段 Dockerfile，含 test 门控与 Media Cloud 内置"
 ```
 
 ---
 
-## Task 5: Register `gk_figure` CPT (TDD)
+## 任务 5：注册 `gk_figure` CPT（TDD）
 
-**Files:**
-- Modify: `cms/mu-plugins/00-gkhubs-cpt.php`
-- Modify: `cms/tests/smoke.sh` (create new)
+**文件：**
+- 修改：`cms/mu-plugins/00-gkhubs-cpt.php`
+- 修改：`cms/tests/smoke.sh`（新建）
 
-- [ ] **Step 1: Write `cms/tests/smoke.sh` with failing assertion for gk_figure**
+- [ ] **步骤 1：写 `cms/tests/smoke.sh`，先包含 gk_figure 失败断言**
 
 ```bash
 #!/usr/bin/env bash
-# cms/tests/smoke.sh — full integration test using docker network
+# cms/tests/smoke.sh —— 用 docker network 跑完整集成测试
 set -euo pipefail
 
 NET="gkhubs-smoke-$$"
@@ -460,13 +460,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> Build CMS image"
+echo "==> 构建 CMS 镜像"
 docker build --target runtime -t gkhubs-cms:smoke cms
 
-echo "==> Create network"
+echo "==> 创建 docker network"
 docker network create "$NET" >/dev/null
 
-echo "==> Start MySQL"
+echo "==> 启动 MySQL"
 docker run -d --name "$DB" --network "$NET" \
   -e MYSQL_ROOT_PASSWORD="$DB_PASS" \
   -e MYSQL_DATABASE=wordpress \
@@ -474,7 +474,7 @@ docker run -d --name "$DB" --network "$NET" \
   -e MYSQL_PASSWORD="$DB_PASS" \
   mysql:8.0 >/dev/null
 
-echo -n "==> Wait MySQL ready"
+echo -n "==> 等 MySQL 就绪"
 for i in $(seq 1 60); do
     if docker exec "$DB" mysqladmin ping -uroot -p"$DB_PASS" --silent 2>/dev/null; then
         echo " OK"; break
@@ -483,7 +483,7 @@ for i in $(seq 1 60); do
     [ "$i" = "60" ] && { echo " TIMEOUT"; exit 1; }
 done
 
-echo "==> Start WP"
+echo "==> 启动 WP"
 docker run -d --name "$WP" --network "$NET" \
   -e WORDPRESS_DB_HOST="$DB" \
   -e WORDPRESS_DB_USER=wordpress \
@@ -492,7 +492,7 @@ docker run -d --name "$WP" --network "$NET" \
   -p 18080:80 \
   gkhubs-cms:smoke >/dev/null
 
-echo -n "==> Wait WP healthy"
+echo -n "==> 等 WP 健康"
 for i in $(seq 1 90); do
     if curl -sf http://localhost:18080/healthz >/dev/null 2>&1; then
         echo " OK"; break
@@ -501,10 +501,10 @@ for i in $(seq 1 90); do
     [ "$i" = "90" ] && { echo " TIMEOUT"; docker logs "$WP" | tail -50; exit 1; }
 done
 
-echo "==> Trigger WP install via wp-admin (anon GET makes WP create tables)"
+echo "==> 触发 WP 安装（匿名 GET 让 WP 创表）"
 curl -sf -L http://localhost:18080/wp-admin/install.php >/dev/null
 
-echo "==> WP-CLI install (silent)"
+echo "==> wp-cli 静默安装"
 docker exec -e WP_CLI_ALLOW_ROOT=1 "$WP" wp --allow-root core install \
   --url=http://localhost:18080 \
   --title=gkhubs \
@@ -513,19 +513,19 @@ docker exec -e WP_CLI_ALLOW_ROOT=1 "$WP" wp --allow-root core install \
   --admin_email=admin@example.com \
   --skip-email
 
-echo "==> Assert gk_figure CPT exists"
+echo "==> 断言 gk_figure CPT 存在"
 RESP=$(curl -sf "http://localhost:18080/wp-json/wp/v2/types/gk_figure" || true)
 if [ -z "$RESP" ]; then
-    echo "FAIL: gk_figure CPT not found"; exit 1
+    echo "FAIL: 未找到 gk_figure CPT"; exit 1
 fi
-echo "$RESP" | grep -q '"slug":"gk_figure"' || { echo "FAIL: response shape: $RESP"; exit 1; }
+echo "$RESP" | grep -q '"slug":"gk_figure"' || { echo "FAIL: 响应结构: $RESP"; exit 1; }
 
-echo "==> Assert gk_listing CPT exists"
+echo "==> 断言 gk_listing CPT 存在"
 RESP=$(curl -sf "http://localhost:18080/wp-json/wp/v2/types/gk_listing" || true)
 if [ -z "$RESP" ]; then
-    echo "FAIL: gk_listing CPT not found"; exit 1
+    echo "FAIL: 未找到 gk_listing CPT"; exit 1
 fi
-echo "$RESP" | grep -q '"slug":"gk_listing"' || { echo "FAIL: response shape: $RESP"; exit 1; }
+echo "$RESP" | grep -q '"slug":"gk_listing"' || { echo "FAIL: 响应结构: $RESP"; exit 1; }
 
 echo "==> Smoke OK"
 ```
@@ -534,21 +534,21 @@ echo "==> Smoke OK"
 chmod +x cms/tests/smoke.sh
 ```
 
-- [ ] **Step 2: Run smoke — gk_listing assertion will fail**
+- [ ] **步骤 2：跑 smoke —— gk_figure 断言会失败**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: passes WP install, fails at "Assert gk_figure CPT exists" because mu-plugin is still a stub.
+预期：WP 安装通过，但在"断言 gk_figure CPT 存在"失败，因为 mu-plugin 还是占位。
 
-- [ ] **Step 3: Implement `gk_figure` registration in `cms/mu-plugins/00-gkhubs-cpt.php`**
+- [ ] **步骤 3：在 `cms/mu-plugins/00-gkhubs-cpt.php` 实现 `gk_figure` 注册**
 
 ```php
 <?php
 /**
  * Plugin Name: gkhubs CPT
- * Description: Custom post types for figures and listings.
+ * Description: figure 与 listing 的自定义文章类型
  */
 defined('ABSPATH') || exit;
 
@@ -559,10 +559,10 @@ add_action('init', function () {
             'name' => 'Figures',
             'singular_name' => 'Figure',
         ],
-        // Headless: Next.js is the only renderer. Disable WP-rendered single
-        // pages and archives so search engines never see WP-themed URLs.
+        // Headless：Next.js 是唯一的渲染端。关掉 WP 主题渲染单页/归档，
+        // 保证搜索引擎不会看到 WP 风格的 URL。
         'public' => false,
-        'show_ui' => true,              // still editable in wp-admin
+        'show_ui' => true,              // wp-admin 里仍可编辑
         'show_in_menu' => true,
         'show_in_rest' => true,
         'rest_base' => 'figures',
@@ -576,9 +576,8 @@ add_action('init', function () {
             'label' => $label,
             'show_in_rest' => true,
             'hierarchical' => false,
-            // Editor role (bot user) must be able to assign and create terms via REST.
-            // Default caps are admin-only (manage_categories), which would silently fail
-            // wp_set_object_terms() during upsert.
+            // editor 角色（bot 用户）必须能通过 REST 创建/挂 term。
+            // 默认 caps 是 admin-only（manage_categories），upsert 时 wp_set_object_terms() 会静默失败。
             'capabilities' => [
                 'manage_terms' => 'edit_posts',
                 'edit_terms'   => 'edit_posts',
@@ -588,7 +587,7 @@ add_action('init', function () {
         ]);
     }
 
-    // Meta fields exposed via REST
+    // 通过 REST 暴露的 meta 字段
     foreach ([
         'scale' => 'string',
         'material' => 'string',
@@ -607,48 +606,46 @@ add_action('init', function () {
 });
 ```
 
-- [ ] **Step 4: Re-run smoke — gk_figure passes, gk_listing still fails**
+- [ ] **步骤 4：再跑 smoke —— gk_figure 通过，gk_listing 仍失败**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: gk_figure assertion passes, gk_listing fails.
+预期：gk_figure 通过，gk_listing 失败。
 
-- [ ] **Step 5: Commit (figure-only, listing comes next)**
+- [ ] **步骤 5：先提交（只 figure，listing 下一任务）**
 
 ```bash
 git add cms/mu-plugins/00-gkhubs-cpt.php cms/tests/smoke.sh
-git commit -m "feat(cms): register gk_figure CPT + smoke test"
+git commit -m "feat(cms): 注册 gk_figure CPT 与 smoke 测试"
 ```
 
 ---
 
-## Task 6: Register `gk_listing` CPT (TDD)
+## 任务 6：注册 `gk_listing` CPT（TDD）
 
-**Files:**
-- Modify: `cms/mu-plugins/00-gkhubs-cpt.php`
+**文件：**
+- 修改：`cms/mu-plugins/00-gkhubs-cpt.php`
 
-- [ ] **Step 1: Re-run smoke to confirm gk_listing assertion fails**
+- [ ] **步骤 1：再跑 smoke 确认 gk_listing 断言失败**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: fails at gk_listing.
+预期：在 gk_listing 那步失败。
 
-- [ ] **Step 2: Append `gk_listing` registration to mu-plugin**
-
-In the same `add_action('init', ...)` callback, add:
+- [ ] **步骤 2：在同一个 `add_action('init', ...)` 回调里追加 `gk_listing`**
 
 ```php
 register_post_type('gk_listing', [
     'label' => 'Listings',
     'labels' => ['name' => 'Listings', 'singular_name' => 'Listing'],
-    'public' => false,                   // never show in front
+    'public' => false,                   // 永不前台展示
     'show_in_rest' => true,
     'rest_base' => 'listings',
-    'show_ui' => true,                   // editable in wp-admin
+    'show_ui' => true,                   // wp-admin 可编辑
     'show_in_menu' => true,
     'supports' => ['title', 'thumbnail', 'custom-fields'],
     'taxonomies' => ['gk_shop'],
@@ -686,9 +683,9 @@ foreach ([
 }
 ```
 
-- [ ] **Step 3: Add unique-key index on `shop_listing_url`** (DB-level constraint via `dbDelta` in `register_activation_hook` won't fire for mu-plugins; use `init` action with a flag).
+- [ ] **步骤 3：在 `shop_listing_url` 上加查询索引**（mu-plugin 没有 `register_activation_hook` 时机，所以用 `init` action + 一次性 flag）
 
-Append to the same file:
+继续在同一文件追加：
 
 ```php
 add_action('init', function () {
@@ -705,39 +702,39 @@ add_action('init', function () {
         $created = $wpdb->query(
             "CREATE INDEX gkhubs_listing_url_idx ON {$wpdb->postmeta} (meta_key(20), meta_value(64))"
         );
-        if ($created === false) return;   // do NOT mark done; let next boot retry
+        if ($created === false) return;   // 创建失败 → 不打 done flag，下次启动重试
     }
     update_option('gkhubs_listing_url_index_v1', 1);
 }, 20);
 ```
 
-> Note: WP postmeta is stringly indexed; this gives reasonable lookup perf for `shop_listing_url`. True uniqueness is enforced at the application layer (REST upsert checks before insert). The `(meta_value(64))` prefix is conservative — most URLs differ in the first 64 chars.
+> 说明：WP postmeta 索引按字符串前缀，这个索引能让 `shop_listing_url` 查得快一点。真正的唯一性是在应用层（REST upsert 先查后写）保证。`(meta_value(64))` 取 64 字符前缀偏保守 —— 大部分 URL 头 64 字符就能区分开。
 
-- [ ] **Step 4: Re-run smoke — must pass**
+- [ ] **步骤 4：再跑 smoke —— 必须通过**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: all assertions pass.
+预期：所有断言通过。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add cms/mu-plugins/00-gkhubs-cpt.php
-git commit -m "feat(cms): register gk_listing CPT + meta + lookup index"
+git commit -m "feat(cms): 注册 gk_listing CPT + meta + 查询索引"
 ```
 
 ---
 
-## Task 7: Custom REST `upsert-figure` (TDD)
+## 任务 7：自定义 REST `upsert-figure`（TDD）
 
-**Files:**
-- Create: `cms/mu-plugins/01-gkhubs-rest.php`
-- Create: `cms/tests/fixtures/figure-sample.json`
-- Modify: `cms/tests/smoke.sh`
+**文件：**
+- 创建：`cms/mu-plugins/01-gkhubs-rest.php`
+- 创建：`cms/tests/fixtures/figure-sample.json`
+- 修改：`cms/tests/smoke.sh`
 
-- [ ] **Step 1: Add fixture**
+- [ ] **步骤 1：加 fixture**
 
 ```json
 {
@@ -755,10 +752,10 @@ git commit -m "feat(cms): register gk_listing CPT + meta + lookup index"
 }
 ```
 
-- [ ] **Step 2: Add failing assertion to `smoke.sh`** (append before "Smoke OK")
+- [ ] **步骤 2：在 `smoke.sh` 追加失败断言**（在 "Smoke OK" 之前）
 
 ```bash
-echo "==> Generate App Password for admin"
+echo "==> 给 admin 生成 App Password"
 APP_PWD=$(docker exec -e WP_CLI_ALLOW_ROOT=1 "$WP" wp --allow-root user application-password create admin smoke --porcelain)
 
 echo "==> POST /upsert-figure"
@@ -768,29 +765,29 @@ RESP=$(curl -sf -u "admin:$APP_PWD" -H "Content-Type: application/json" \
 echo "$RESP" | grep -q '"id":' || { echo "FAIL: upsert-figure response: $RESP"; exit 1; }
 FIGURE_ID=$(echo "$RESP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 
-echo "==> Idempotency: same slug → same id"
+echo "==> 幂等性：同 slug → 同 id"
 RESP2=$(curl -sf -u "admin:$APP_PWD" -H "Content-Type: application/json" \
     -X POST "http://localhost:18080/wp-json/gkhubs/v1/upsert-figure" \
     --data @cms/tests/fixtures/figure-sample.json)
 ID2=$(echo "$RESP2" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
-[ "$FIGURE_ID" = "$ID2" ] || { echo "FAIL: idempotency, got $FIGURE_ID then $ID2"; exit 1; }
+[ "$FIGURE_ID" = "$ID2" ] || { echo "FAIL: 幂等失败，第一次 $FIGURE_ID 第二次 $ID2"; exit 1; }
 ```
 
-- [ ] **Step 3: Run smoke — fails because endpoint doesn't exist**
+- [ ] **步骤 3：跑 smoke —— 因端点不存在而失败**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: 404 on `/wp-json/gkhubs/v1/upsert-figure`.
+预期：`/wp-json/gkhubs/v1/upsert-figure` 404。
 
-- [ ] **Step 4: Implement `cms/mu-plugins/01-gkhubs-rest.php`**
+- [ ] **步骤 4：实现 `cms/mu-plugins/01-gkhubs-rest.php`**
 
 ```php
 <?php
 /**
  * Plugin Name: gkhubs REST
- * Description: Custom REST endpoints for crawler ingest.
+ * Description: 给爬虫写入用的自定义 REST 端点
  */
 defined('ABSPATH') || exit;
 
@@ -807,10 +804,10 @@ add_action('rest_api_init', function () {
 function gkhubs_upsert_figure(WP_REST_Request $req) {
     $body = $req->get_json_params();
     if (empty($body['slug']) || empty($body['title'])) {
-        return new WP_Error('bad_request', 'slug and title required', ['status' => 400]);
+        return new WP_Error('bad_request', 'slug 和 title 必填', ['status' => 400]);
     }
 
-    // Idempotency: find by slug
+    // 幂等键：slug
     $existing = get_page_by_path($body['slug'], OBJECT, 'gk_figure');
     $post_id = $existing ? $existing->ID : 0;
 
@@ -825,7 +822,7 @@ function gkhubs_upsert_figure(WP_REST_Request $req) {
     $post_id = $post_id ? wp_update_post($args, true) : wp_insert_post($args, true);
     if (is_wp_error($post_id)) return $post_id;
 
-    // Taxonomies
+    // 分类法
     foreach (['ip' => 'gk_ip', 'character' => 'gk_character', 'studio' => 'gk_studio'] as $key => $tax) {
         if (!empty($body[$key])) {
             wp_set_object_terms($post_id, [sanitize_text_field($body[$key])], $tax, false);
@@ -846,31 +843,31 @@ function gkhubs_upsert_figure(WP_REST_Request $req) {
 }
 ```
 
-- [ ] **Step 5: Run smoke — must pass**
+- [ ] **步骤 5：跑 smoke —— 必须通过**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: upsert-figure 200 with id, idempotency check passes.
+预期：upsert-figure 200 带 id，幂等检查通过。
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add cms/mu-plugins/01-gkhubs-rest.php cms/tests/fixtures/figure-sample.json cms/tests/smoke.sh
-git commit -m "feat(cms): REST upsert-figure with slug-based idempotency"
+git commit -m "feat(cms): REST upsert-figure，按 slug 幂等"
 ```
 
 ---
 
-## Task 8: Custom REST `upsert-listing` (TDD)
+## 任务 8：自定义 REST `upsert-listing`（TDD）
 
-**Files:**
-- Modify: `cms/mu-plugins/01-gkhubs-rest.php`
-- Create: `cms/tests/fixtures/listing-sample.json`
-- Modify: `cms/tests/smoke.sh`
+**文件：**
+- 修改：`cms/mu-plugins/01-gkhubs-rest.php`
+- 创建：`cms/tests/fixtures/listing-sample.json`
+- 修改：`cms/tests/smoke.sh`
 
-- [ ] **Step 1: Add fixture `listing-sample.json`**
+- [ ] **步骤 1：加 fixture `listing-sample.json`**
 
 ```json
 {
@@ -887,7 +884,7 @@ git commit -m "feat(cms): REST upsert-figure with slug-based idempotency"
 }
 ```
 
-- [ ] **Step 2: Add failing assertions to `smoke.sh`** (append)
+- [ ] **步骤 2：在 `smoke.sh` 追加失败断言**
 
 ```bash
 echo "==> POST /upsert-listing"
@@ -897,26 +894,26 @@ RESP=$(curl -sf -u "admin:$APP_PWD" -H "Content-Type: application/json" \
 echo "$RESP" | grep -q '"id":' || { echo "FAIL: upsert-listing: $RESP"; exit 1; }
 LISTING_ID=$(echo "$RESP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 
-echo "==> Idempotency: same shop_listing_url → same id"
+echo "==> 幂等性：同 shop_listing_url → 同 id"
 RESP2=$(curl -sf -u "admin:$APP_PWD" -H "Content-Type: application/json" \
     -X POST "http://localhost:18080/wp-json/gkhubs/v1/upsert-listing" \
     --data @cms/tests/fixtures/listing-sample.json)
 ID2=$(echo "$RESP2" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
-[ "$LISTING_ID" = "$ID2" ] || { echo "FAIL: listing idempotency"; exit 1; }
+[ "$LISTING_ID" = "$ID2" ] || { echo "FAIL: listing 幂等失败"; exit 1; }
 
-echo "==> Verify figure_ref linked"
+echo "==> 验证 figure_ref 已挂上"
 LINKED_FIGURE=$(curl -sf "http://localhost:18080/wp-json/wp/v2/listings/$LISTING_ID" \
     | python3 -c 'import json,sys;print(json.load(sys.stdin)["meta"]["gk_figure_ref"])')
-[ "$LINKED_FIGURE" = "$FIGURE_ID" ] || { echo "FAIL: figure_ref expected $FIGURE_ID got $LINKED_FIGURE"; exit 1; }
+[ "$LINKED_FIGURE" = "$FIGURE_ID" ] || { echo "FAIL: figure_ref 期望 $FIGURE_ID 实际 $LINKED_FIGURE"; exit 1; }
 ```
 
-- [ ] **Step 3: Run smoke — fails (no endpoint)**
+- [ ] **步骤 3：跑 smoke —— 失败（端点不存在）**
 
 ```bash
 make cms-smoke
 ```
 
-- [ ] **Step 4: Append handler to `cms/mu-plugins/01-gkhubs-rest.php`**
+- [ ] **步骤 4：在 `cms/mu-plugins/01-gkhubs-rest.php` 追加 handler**
 
 ```php
 add_action('rest_api_init', function () {
@@ -931,11 +928,11 @@ function gkhubs_upsert_listing(WP_REST_Request $req) {
     $body = $req->get_json_params();
     foreach (['shop', 'shop_listing_url', 'title', 'price_current', 'price_currency', 'stock_status', 'fetched_at'] as $k) {
         if (!isset($body[$k]) || $body[$k] === '') {
-            return new WP_Error('bad_request', "missing field: $k", ['status' => 400]);
+            return new WP_Error('bad_request', "缺少字段: $k", ['status' => 400]);
         }
     }
 
-    // Idempotency: lookup by shop_listing_url meta
+    // 幂等键：shop_listing_url meta
     $existing = get_posts([
         'post_type' => 'gk_listing',
         'post_status' => 'any',
@@ -958,10 +955,10 @@ function gkhubs_upsert_listing(WP_REST_Request $req) {
     $post_id = $post_id ? wp_update_post($args, true) : wp_insert_post($args, true);
     if (is_wp_error($post_id)) return $post_id;
 
-    // Shop taxonomy
+    // shop 分类法
     wp_set_object_terms($post_id, [sanitize_text_field($body['shop'])], 'gk_shop', false);
 
-    // Resolve figure_ref by slug if provided
+    // 用 slug 反查 figure_ref
     $figure_ref = 0;
     if (!empty($body['gk_figure_slug'])) {
         $fig = get_page_by_path($body['gk_figure_slug'], OBJECT, 'gk_figure');
@@ -971,7 +968,7 @@ function gkhubs_upsert_listing(WP_REST_Request $req) {
     }
     if ($figure_ref) update_post_meta($post_id, 'gk_figure_ref', $figure_ref);
 
-    // Other meta
+    // 其他 meta
     foreach ([
         'shop_listing_url','price_current','price_currency','stock_status',
         'listing_type','ship_from','fetched_at','match_confidence','raw_payload'
@@ -986,46 +983,46 @@ function gkhubs_upsert_listing(WP_REST_Request $req) {
 }
 ```
 
-- [ ] **Step 5: Run smoke — must pass**
+- [ ] **步骤 5：跑 smoke —— 必须通过**
 
 ```bash
 make cms-smoke
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **步骤 6：提交**
 
 ```bash
 git add cms/mu-plugins/01-gkhubs-rest.php cms/tests/fixtures/listing-sample.json cms/tests/smoke.sh
-git commit -m "feat(cms): REST upsert-listing with shop_listing_url idempotency + figure linking"
+git commit -m "feat(cms): REST upsert-listing，按 shop_listing_url 幂等 + figure 关联"
 ```
 
 ---
 
-## Task 9: Custom REST `figures-with-listings` (read endpoint)
+## 任务 9：自定义 REST `figures-with-listings`（读端点）
 
-**Files:**
-- Modify: `cms/mu-plugins/01-gkhubs-rest.php`
-- Modify: `cms/tests/smoke.sh`
+**文件：**
+- 修改：`cms/mu-plugins/01-gkhubs-rest.php`
+- 修改：`cms/tests/smoke.sh`
 
-- [ ] **Step 1: Append failing assertion to smoke**
+- [ ] **步骤 1：在 smoke 追加失败断言**
 
 ```bash
 echo "==> GET /figures-with-listings"
 RESP=$(curl -sf "http://localhost:18080/wp-json/gkhubs/v1/figures-with-listings?per_page=10")
 COUNT=$(echo "$RESP" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["items"]))')
-[ "$COUNT" -ge 1 ] || { echo "FAIL: expected ≥1 figure, got $COUNT"; exit 1; }
-echo "$RESP" | grep -q "\"shop_listing_url\":\"https://favorgk.com" || { echo "FAIL: listing not embedded"; exit 1; }
+[ "$COUNT" -ge 1 ] || { echo "FAIL: 期望 ≥1 个 figure，实际 $COUNT"; exit 1; }
+echo "$RESP" | grep -q "\"shop_listing_url\":\"https://favorgk.com" || { echo "FAIL: listing 没嵌入"; exit 1; }
 ```
 
-- [ ] **Step 2: Run smoke — fails (no endpoint)**
+- [ ] **步骤 2：跑 smoke —— 失败（端点不存在）**
 
-- [ ] **Step 3: Append handler**
+- [ ] **步骤 3：追加 handler**
 
 ```php
 add_action('rest_api_init', function () {
     register_rest_route('gkhubs/v1', '/figures-with-listings', [
         'methods' => 'GET',
-        'permission_callback' => '__return_true',   // public read
+        'permission_callback' => '__return_true',   // 公开读
         'callback' => 'gkhubs_figures_with_listings',
         'args' => [
             'per_page' => ['default' => 20, 'sanitize_callback' => 'absint'],
@@ -1098,29 +1095,29 @@ function gkhubs_figures_with_listings(WP_REST_Request $req) {
 }
 ```
 
-- [ ] **Step 4: Run smoke — must pass**
+- [ ] **步骤 4：跑 smoke —— 必须通过**
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add cms/mu-plugins/01-gkhubs-rest.php cms/tests/smoke.sh
-git commit -m "feat(cms): REST figures-with-listings (public read, paginated)"
+git commit -m "feat(cms): REST figures-with-listings（公开读，分页）"
 ```
 
 ---
 
-## Task 10: Bot user + bootstrap script
+## 任务 10：bot 用户与 bootstrap 脚本
 
-**Files:**
-- Modify: `cms/docker-entrypoint-init.sh`
-- Modify: `cms/tests/smoke.sh`
+**文件：**
+- 修改：`cms/docker-entrypoint-init.sh`
+- 修改：`cms/tests/smoke.sh`
 
-- [ ] **Step 1: Replace stub `docker-entrypoint-init.sh`**
+- [ ] **步骤 1：替换占位 `docker-entrypoint-init.sh`**
 
 ```bash
 #!/usr/bin/env bash
-# cms/docker-entrypoint-init.sh — idempotent first-run bootstrap.
-# Runs after Apache is up; safe to re-run on every container restart.
+# cms/docker-entrypoint-init.sh —— 幂等的首次启动 bootstrap。
+# Apache 起来后运行；每次容器重启都跑一次也安全。
 set -euo pipefail
 
 WP_PATH=/var/www/html
@@ -1129,31 +1126,31 @@ BOT_EMAIL="${GKHUBS_BOT_EMAIL:-crawler@gkhubs.local}"
 
 cd "$WP_PATH"
 
-# 1. WP not installed yet → skip; first request will trigger install
+# 1. WP 还没装 → 直接退出；首次访问 /wp-admin/install.php 会触发安装
 if ! wp --allow-root core is-installed 2>/dev/null; then
-    echo "[gkhubs-init] WP not installed; skipping bootstrap"
+    echo "[gkhubs-init] WP 未安装，跳过 bootstrap"
     exit 0
 fi
 
-# 2. Activate bundled plugins (idempotent — wp-cli no-ops if already active)
+# 2. 激活内置插件（幂等 —— 已激活时 wp-cli 是 no-op）
 wp --allow-root plugin activate ilab-media-tools 2>/dev/null || true
 
-# 3. Ensure bot user exists (role=editor — can edit posts but not site settings)
+# 3. 确保 bot 用户存在（role=editor —— 能编辑文章但管不了站点设置）
 if ! wp --allow-root user get "$BOT_USER" >/dev/null 2>&1; then
-    echo "[gkhubs-init] creating bot user $BOT_USER"
+    echo "[gkhubs-init] 创建 bot 用户 $BOT_USER"
     wp --allow-root user create "$BOT_USER" "$BOT_EMAIL" \
         --role=editor \
         --user_pass="$(openssl rand -hex 32)" \
         --display_name="Crawler Bot"
 fi
 
-# 4. Configure Media Cloud → R2 via wp options (more reliable than filter hook
-#    whose name varies across plugin versions). All keys are idempotent updates.
+# 4. 用 wp option update 配 Media Cloud → R2（比 filter hook 可靠 ——
+#    hook 名跨版本会变。所有 update 都是幂等的。）
 if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ]; then
-    echo "[gkhubs-init] configuring R2 offload"
-    # Verify option key prefix against your installed Media Cloud version on first run:
+    echo "[gkhubs-init] 配置 R2 offload"
+    # 首次部署后请验证 option key 前缀对得上 Media Cloud 实际版本：
     #   wp --allow-root option list --search='mcloud-storage*' --format=table
-    # Adjust below if 4.6.4 uses different keys.
+    # 若 4.6.4 用的是其他 key，这里要相应调整。
     wp --allow-root option update mcloud-storage-driver "s3"
     wp --allow-root option update mcloud-storage-s3-access-key-id "$R2_ACCESS_KEY"
     wp --allow-root option update mcloud-storage-s3-access-secret "$R2_SECRET"
@@ -1166,54 +1163,54 @@ fi
 echo "[gkhubs-init] done"
 ```
 
-> **Verification step before first deploy**: After Plan 1 Task 14 deploys the image, SSH in and run `docker exec gkhubs-cms wp --allow-root option list --search='mcloud-storage*' --format=table`. If the option keys don't appear, Media Cloud 4.6.4 likely uses different prefixes (`ilab-media-*` is one historical pattern) — `grep -r 'storage-driver' /var/www/html/wp-content/plugins/ilab-media-tools` to find the right keys, then update `gkhubs-init.sh` and redeploy.
+> **首次部署前的验证**：任务 14 部署完镜像后，SSH 上去跑 `docker exec gkhubs-cms wp --allow-root option list --search='mcloud-storage*' --format=table`。如果列不到任何 key，说明 Media Cloud 4.6.4 用的是别的前缀（历史上有 `ilab-media-*`）—— `grep -r 'storage-driver' /var/www/html/wp-content/plugins/ilab-media-tools` 找到正确的 key，更新 `gkhubs-init.sh` 后重新部署。
 
-- [ ] **Step 2: Update smoke to use bot user instead of admin for upsert**
+- [ ] **步骤 2：smoke 改用 bot 用户而非 admin 上传**
 
-In `smoke.sh`, change the `App Password` block to:
+`smoke.sh` 里把 App Password 那一段改成：
 
 ```bash
-echo "==> Run gkhubs-init.sh inside container"
+echo "==> 在容器内跑 gkhubs-init.sh"
 docker exec "$WP" bash /usr/local/bin/gkhubs-init.sh
 
-echo "==> Generate App Password for bot user"
+echo "==> 给 bot 用户生成 App Password"
 APP_PWD=$(docker exec -e WP_CLI_ALLOW_ROOT=1 "$WP" wp --allow-root user application-password create crawler-bot smoke --porcelain)
-# (rest of script uses crawler-bot:$APP_PWD instead of admin:$APP_PWD)
+# （后续改用 crawler-bot:$APP_PWD 而非 admin:$APP_PWD）
 ```
 
-Replace all `-u "admin:$APP_PWD"` with `-u "crawler-bot:$APP_PWD"`.
+把所有 `-u "admin:$APP_PWD"` 替换成 `-u "crawler-bot:$APP_PWD"`。
 
-- [ ] **Step 3: Run smoke — must pass**
+- [ ] **步骤 3：跑 smoke —— 必须通过**
 
 ```bash
 make cms-smoke
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4：提交**
 
 ```bash
 git add cms/docker-entrypoint-init.sh cms/tests/smoke.sh
-git commit -m "feat(cms): bot user bootstrap + smoke uses bot user not admin"
+git commit -m "feat(cms): bot 用户 bootstrap + smoke 改用 bot 而非 admin"
 ```
 
 ---
 
-## Task 11: R2 upload integration test
+## 任务 11：R2 上传集成测试
 
-R2 wiring lives in `gkhubs-init.sh` (Task 10 step 1) — set via `wp option update`. This task only adds the smoke assertion that exercises an upload end-to-end when R2 vars are present.
+R2 接线在 `gkhubs-init.sh`（任务 10 步骤 1）里 —— 通过 `wp option update` 写入。本任务只补 smoke 断言：在 R2 变量齐备时跑端到端上传。
 
-**Files:**
-- Modify: `cms/tests/smoke.sh`
+**文件：**
+- 修改：`cms/tests/smoke.sh`
 
-- [ ] **Step 1: Add R2 upload assertion to smoke**
+- [ ] **步骤 1：在 smoke 加 R2 上传断言**
 
-> R2 needs real credentials. If `R2_ACCESS_KEY` / etc. are unset in the test env, **skip** this assertion (don't fail). Document in plan that running with R2 vars is required pre-deploy.
+> R2 需要真凭据。如果测试环境里 `R2_ACCESS_KEY` 等没设，**跳过**断言（不要 fail）。计划里说明上线前必须用 R2 变量跑一次。
 
-Append to smoke before "Smoke OK":
+在 "Smoke OK" 前追加：
 
 ```bash
 if [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ENDPOINT:-}" ]; then
-    echo "==> R2 vars present — restart WP with R2 env"
+    echo "==> R2 变量齐备 —— 用 R2 env 重启 WP"
     docker rm -f "$WP" >/dev/null
     docker run -d --name "$WP" --network "$NET" \
       -e WORDPRESS_DB_HOST="$DB" \
@@ -1229,7 +1226,7 @@ if [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ] && [ -n "${R2_BUCKET:-
     sleep 5
     docker exec "$WP" bash /usr/local/bin/gkhubs-init.sh
 
-    echo "==> Upload test image"
+    echo "==> 上传测试图"
     APP_PWD=$(docker exec -e WP_CLI_ALLOW_ROOT=1 "$WP" wp --allow-root user application-password create crawler-bot r2test --porcelain)
     # 1x1 px PNG
     printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\xfe\xa0\x9d\xe1\x00\x00\x00\x00IEND\xaeB`\x82' > /tmp/test.png
@@ -1239,23 +1236,23 @@ if [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ] && [ -n "${R2_BUCKET:-
         --data-binary @/tmp/test.png \
         "http://localhost:18080/wp-json/wp/v2/media")
     URL=$(echo "$UPLOAD" | python3 -c 'import json,sys;print(json.load(sys.stdin)["source_url"])')
-    echo "Uploaded URL: $URL"
-    # Media Cloud should rewrite URL to R2 endpoint
-    echo "$URL" | grep -q "$R2_BUCKET" || { echo "FAIL: URL not on R2: $URL"; exit 1; }
+    echo "上传 URL: $URL"
+    # Media Cloud 应当把 URL 重写到 R2 endpoint
+    echo "$URL" | grep -q "$R2_BUCKET" || { echo "FAIL: URL 不在 R2 上: $URL"; exit 1; }
 else
-    echo "==> R2 vars unset — skipping R2 upload test (run manually pre-deploy)"
+    echo "==> R2 变量缺失 —— 跳过 R2 上传测试（部署前请手动跑一次）"
 fi
 ```
 
-- [ ] **Step 2: Local sanity run (without R2)**
+- [ ] **步骤 2：本地跑（不带 R2）**
 
 ```bash
 make cms-smoke
 ```
 
-Expected: passes; R2 block skipped with message.
+预期：通过；R2 块跳过并打印提示。
 
-- [ ] **Step 3: Local run with R2 (optional, recommended before Task 14 prod deploy)**
+- [ ] **步骤 3：本地带 R2 跑（部署前推荐）**
 
 ```bash
 R2_ENDPOINT=https://<acct>.r2.cloudflarestorage.com \
@@ -1265,23 +1262,23 @@ R2_SECRET=... \
 make cms-smoke
 ```
 
-Expected: R2 block runs and upload URL contains the bucket name. **If this fails, the option-key verification note in Task 10 applies** — run the `option list --search` command inside the container to find the right keys for Media Cloud 4.6.4.
+预期：R2 块执行，上传 URL 包含桶名。**如果失败，参考任务 10 里的 option key 验证步骤** —— 在容器里跑 `option list --search` 找到 Media Cloud 4.6.4 的真实 key 名。
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4：提交**
 
 ```bash
 git add cms/tests/smoke.sh
-git commit -m "test(cms): R2 upload smoke (skipped when R2 env vars unset)"
+git commit -m "test(cms): R2 上传 smoke（无变量时跳过）"
 ```
 
 ---
 
-## Task 12: Health endpoint via REST (for Dokploy)
+## 任务 12：REST 健康端点（给 Dokploy 用）
 
-**Files:**
-- Create: `cms/mu-plugins/99-gkhubs-health.php`
+**文件：**
+- 创建：`cms/mu-plugins/99-gkhubs-health.php`
 
-- [ ] **Step 1: Add failing assertion to smoke**
+- [ ] **步骤 1：在 smoke 加失败断言**
 
 ```bash
 echo "==> GET /wp-json/gkhubs/v1/health"
@@ -1289,15 +1286,15 @@ RESP=$(curl -sf "http://localhost:18080/wp-json/gkhubs/v1/health")
 echo "$RESP" | grep -q '"ok":true' || { echo "FAIL: health: $RESP"; exit 1; }
 ```
 
-- [ ] **Step 2: Run smoke — fails**
+- [ ] **步骤 2：跑 smoke —— 失败**
 
-- [ ] **Step 3: Implement endpoint**
+- [ ] **步骤 3：实现端点**
 
 ```php
 <?php
 /**
  * Plugin Name: gkhubs Health
- * Description: REST health endpoint with WP + DB + plugin checks.
+ * Description: 含 WP + DB + plugin 检查的 REST 健康端点
  */
 defined('ABSPATH') || exit;
 
@@ -1322,140 +1319,140 @@ add_action('rest_api_init', function () {
 });
 ```
 
-- [ ] **Step 4: Run smoke — must pass**
+- [ ] **步骤 4：跑 smoke —— 必须通过**
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add cms/mu-plugins/99-gkhubs-health.php cms/tests/smoke.sh
-git commit -m "feat(cms): /wp-json/gkhubs/v1/health endpoint"
+git commit -m "feat(cms): /wp-json/gkhubs/v1/health 端点"
 ```
 
 ---
 
-## Task 13: Push code → create Dokploy MySQL app
+## 任务 13：推代码 + 创建 Dokploy MySQL 应用
 
-**Pre-req:** Dokploy API key in env (the one user shared — not echoed here).
+**前置条件：** Dokploy API key 已就绪（用户给过的，不在这里复读）。
 
-- [ ] **Step 1: Push to git remote**
+- [ ] **步骤 1：推送到 git remote**
 
 ```bash
 git remote -v
-# if no remote yet, user creates GitHub repo gkhubs-forum and runs:
+# 还没 remote 的话，用户在 GitHub 创 gkhubs-forum 仓库，然后:
 # git remote add origin git@github.com:USER/gkhubs-forum.git
 # git push -u origin main
 ```
 
-> If user prefers Dokploy direct Git target, use Dokploy's built-in repo URL instead.
+> 如果你倾向直接把仓库挂到 Dokploy（Dokploy 自带 git 拉取），用 Dokploy 提供的仓库 URL。
 
-- [ ] **Step 2: Use Dokploy skill to create MySQL service**
+- [ ] **步骤 2：用 Dokploy skill 创建 MySQL 服务**
 
-Invoke `dp` skill (or manual via Dokploy UI). Required config:
-- App name: `gkhubs-cms-db`
-- Type: Docker image
-- Image: `mysql:8.0`
-- Env vars:
-  - `MYSQL_ROOT_PASSWORD` (generate 32-char random, store in your password manager)
+调用 `dp` skill（或在 Dokploy UI 手动操作）。所需配置：
+- 应用名：`gkhubs-cms-db`
+- 类型：Docker image
+- 镜像：`mysql:8.0`
+- 环境变量：
+  - `MYSQL_ROOT_PASSWORD`（生成 32 位随机串，存进密码管理器）
   - `MYSQL_DATABASE=wordpress`
   - `MYSQL_USER=wordpress`
-  - `MYSQL_PASSWORD` (generate 32-char random, store in your password manager)
-- Persistent volume: `/var/lib/mysql` → 20GB
-- Network: default Dokploy network
-- No public ports
+  - `MYSQL_PASSWORD`（生成 32 位随机串，存进密码管理器）
+- 持久卷：`/var/lib/mysql` → 20GB
+- 网络：默认 Dokploy network
+- 不暴露公网端口
 
-- [ ] **Step 3: Verify MySQL up**
+- [ ] **步骤 3：验证 MySQL 起来**
 
-From Dokploy host:
+在 Dokploy 主机：
 ```bash
 ssh root@152.53.53.84 "docker exec gkhubs-cms-db mysqladmin ping -uroot -p<root_pass>"
 ```
 
-Expected: `mysqld is alive`.
+预期：`mysqld is alive`。
 
-- [ ] **Step 4: Note connection vars in 1Password**
+- [ ] **步骤 4：把连接变量记进密码管理器**
 
-Document:
-- `WORDPRESS_DB_HOST=gkhubs-cms-db` (Docker service name within Dokploy network)
+记录：
+- `WORDPRESS_DB_HOST=gkhubs-cms-db`（Dokploy 网络里的 Docker 服务名）
 - `WORDPRESS_DB_NAME=wordpress`
 - `WORDPRESS_DB_USER=wordpress`
-- `WORDPRESS_DB_PASSWORD=<saved>`
+- `WORDPRESS_DB_PASSWORD=<已存>`
 
 ---
 
-## Task 14: Create Dokploy CMS app
+## 任务 14：创建 Dokploy CMS 应用
 
-- [ ] **Step 1: Create Dokploy application**
+- [ ] **步骤 1：创建 Dokploy 应用**
 
-Via Dokploy skill or UI:
-- App name: `gkhubs-cms`
-- Build: Git source, this repo, build context = `cms/`
-- Dockerfile path: `Dockerfile`
-- Build target: `runtime`
-- Port: 80 → exposed via Dokploy's reverse proxy
-- Domain: `cms.gkhubs.com` (DNS to be pointed in Phase 5; for now use Dokploy-provided subdomain)
-- Healthcheck: `GET /healthz` interval 30s timeout 5s
-- Env vars:
+通过 Dokploy skill 或 UI：
+- 应用名：`gkhubs-cms`
+- 构建：Git source，本仓库，build context = `cms/`
+- Dockerfile 路径：`Dockerfile`
+- Build target：`runtime`
+- 端口：80 → Dokploy 反向代理对外
+- 域名：`cms.gkhubs.com`（Phase 5 才接 DNS；先用 Dokploy 自动生成的子域名）
+- 健康检查：`GET /healthz` interval 30s timeout 5s
+- 环境变量：
   - `WORDPRESS_DB_HOST=gkhubs-cms-db`
   - `WORDPRESS_DB_NAME=wordpress`
   - `WORDPRESS_DB_USER=wordpress`
-  - `WORDPRESS_DB_PASSWORD=<from 1pw>`
+  - `WORDPRESS_DB_PASSWORD=<从密码管理器取>`
   - `WORDPRESS_TABLE_PREFIX=gk_`
-  - `R2_ENDPOINT=<from R2 dashboard>`
+  - `R2_ENDPOINT=<R2 控制台>`
   - `R2_BUCKET=gkhubs-media`
-  - `R2_ACCESS_KEY=<from R2>`
-  - `R2_SECRET=<from R2>`
+  - `R2_ACCESS_KEY=<R2>`
+  - `R2_SECRET=<R2>`
   - `GKHUBS_BOT_USER=crawler-bot`
   - `GKHUBS_BOT_EMAIL=crawler@gkhubs.local`
 
-- [ ] **Step 2: Trigger first deploy**
+- [ ] **步骤 2：触发首次部署**
 
-Push a no-op commit or click "Deploy" in Dokploy. Watch build logs:
-- Test stage must complete (static-check.sh passes)
-- Runtime image starts
-- Healthcheck within 60s passes
+推一个空提交，或在 Dokploy 点 "Deploy"。看构建日志：
+- test 阶段必须通过（static-check.sh 跑过）
+- runtime 镜像启动
+- 60 秒内健康检查通过
 
-- [ ] **Step 3: Run WP install via wp-admin browser**
+- [ ] **步骤 3：浏览器跑一次 wp-admin 安装**
 
-Open Dokploy's provided HTTPS URL → wp-admin install page → fill in:
-- Site title: `gkhubs CMS`
-- Admin user: `admin`
-- Admin password: from your password manager (Pre-flight P-3)
-- Email: yours
-- Search engine visibility: **discourage** (headless, never indexed)
+打开 Dokploy 提供的 HTTPS URL → wp-admin 安装页 → 填：
+- 站点标题：`gkhubs CMS`
+- 管理员用户：`admin`
+- 管理员密码：从密码管理器取（预检 P-3）
+- 邮箱：你自己的
+- 搜索引擎可见性：**勾上"discourage"**（headless 站，永远不希望被索引）
 
-- [ ] **Step 3.5: Trigger gkhubs-init.sh manually (creates bot user)**
+- [ ] **步骤 3.5：手动触发 gkhubs-init.sh（创建 bot 用户）**
 
-The entrypoint's background watcher only runs once at container start (before WP was installed). After manual install, run init explicitly:
+entrypoint 里的后台 watcher 只在容器启动时跑一次（那时 WP 还没装），所以手动安装完后要显式跑一次 init：
 
 ```bash
 ssh root@152.53.53.84 "docker exec gkhubs-cms /usr/local/bin/gkhubs-init.sh"
 ```
 
-Expected output includes `creating bot user crawler-bot` and (if R2 vars set) `configuring R2 offload`. Verify:
+预期输出包含 `创建 bot 用户 crawler-bot`，以及（若 R2 变量已设）`配置 R2 offload`。验证：
 
 ```bash
 ssh root@152.53.53.84 "docker exec gkhubs-cms wp --allow-root user list --role=editor --field=user_login"
 ```
 
-Should print `crawler-bot`.
+应当打印 `crawler-bot`。
 
-- [ ] **Step 4: Verify endpoints from outside**
+- [ ] **步骤 4：从公网验证端点**
 
 ```bash
 curl -sf https://<dokploy-cms-url>/healthz | jq .
 curl -sf https://<dokploy-cms-url>/wp-json/gkhubs/v1/health | jq .
 ```
 
-Both must return `"ok": true`.
+两个都要返回 `"ok": true`。
 
-- [ ] **Step 5: Generate App Password for crawler-bot in wp-admin**
+- [ ] **步骤 5：在 wp-admin 给 crawler-bot 生成 App Password**
 
-wp-admin → Users → crawler-bot → Application Passwords → Add. Save the value to 1Password as `GKHUBS_CRAWLER_APP_PASSWORD` — needed by Plan 3.
+wp-admin → Users → crawler-bot → Application Passwords → Add。把生成的值存到密码管理器，命名 `GKHUBS_CRAWLER_APP_PASSWORD` —— Plan 3 会用到。
 
-- [ ] **Step 6: End-to-end production smoke**
+- [ ] **步骤 6：生产环境端到端 smoke**
 
 ```bash
-APP_PWD=<from 1pw>
+APP_PWD=<从密码管理器取>
 URL=https://<dokploy-cms-url>
 
 curl -sf -u "crawler-bot:$APP_PWD" -H "Content-Type: application/json" \
@@ -1465,49 +1462,49 @@ curl -sf -u "crawler-bot:$APP_PWD" -H "Content-Type: application/json" \
 curl -sf "$URL/wp-json/gkhubs/v1/figures-with-listings" | jq '.items | length'
 ```
 
-Expected: figure created (non-zero id) and visible in figures-with-listings.
+预期：figure 创建成功（id 非零）且能在 figures-with-listings 列表里看到。
 
-- [ ] **Step 7: Commit deployment notes**
+- [ ] **步骤 7：提交部署文档**
 
-Create `cms/DEPLOY.md` documenting:
-- App names in Dokploy
-- Env var reference (no secrets, just keys)
-- How to redeploy (`git push` triggers auto-deploy)
-- Where each secret lives (1Password item names)
-- How to view logs (`Dokploy UI → app → logs`)
+创建 `cms/DEPLOY.md`，记录：
+- Dokploy 里的应用名
+- 环境变量参考（只列 key，不写 secret）
+- 重新部署的方式（`git push` 触发 auto-deploy）
+- 各 secret 在密码管理器的条目名
+- 怎么看日志（Dokploy UI → 应用 → 日志）
 
 ```bash
 git add cms/DEPLOY.md
-git commit -m "docs(cms): deployment runbook"
+git commit -m "docs(cms): 部署运维手册"
 ```
 
 ---
 
-## Definition of Done
+## 完成标准
 
-- [ ] Tasks 1–12 each produced at least one commit on `main` (Task 13 is Dokploy-only operations, no commit; Task 14 produces one commit at the end: `cms/DEPLOY.md`)
-- [ ] `make cms-smoke` passes locally with no R2 vars (R2 block skipped)
-- [ ] `make cms-smoke` passes locally **with** R2 vars (R2 upload assertion succeeds)
-- [ ] `gkhubs-cms` and `gkhubs-cms-db` running in Dokploy
-- [ ] `https://<cms-url>/healthz` returns 200
-- [ ] `https://<cms-url>/wp-json/gkhubs/v1/health` returns `"ok": true`
-- [ ] Production end-to-end (Task 14 Step 6) succeeds
-- [ ] Crawler bot App Password stored in your password manager
-- [ ] Image upload via REST lands on R2 (URL contains the bucket name, not local `/wp-content/uploads`)
-- [ ] `cms/DEPLOY.md` committed
+- [ ] 任务 1–12 每个至少在 `main` 上产出一个 commit（任务 13 仅是 Dokploy 操作，无 commit；任务 14 末尾产出一个 commit：`cms/DEPLOY.md`）
+- [ ] `make cms-smoke` 在不带 R2 变量时通过（R2 块跳过）
+- [ ] `make cms-smoke` 在**带** R2 变量时通过（R2 上传断言成功）
+- [ ] `gkhubs-cms` 与 `gkhubs-cms-db` 在 Dokploy 上跑起来
+- [ ] `https://<cms-url>/healthz` 返回 200
+- [ ] `https://<cms-url>/wp-json/gkhubs/v1/health` 返回 `"ok": true`
+- [ ] 生产端到端（任务 14 步骤 6）跑通
+- [ ] crawler bot 的 App Password 已存进密码管理器
+- [ ] 通过 REST 上传的图片落到 R2（URL 含桶名，不是本地 `/wp-content/uploads`）
+- [ ] `cms/DEPLOY.md` 已 commit
 
 ---
 
-## Skills to invoke during execution
+## 执行时要调用的 skill
 
-- @superpowers:test-driven-development — every task here uses red-green-commit cycle
-- @superpowers:verification-before-completion — before claiming a task done, run the relevant smoke section
-- `dp` (dokploy-deploy) — only at Tasks 13–14 for actual Dokploy operations
+- @superpowers:test-driven-development —— 本计划每个任务都用红绿提交节奏
+- @superpowers:verification-before-completion —— 每个任务声明完成前要先跑对应的 smoke 段
+- `dp`（dokploy-deploy）—— 仅任务 13、14 真正动 Dokploy 时调用
 
-## Out of scope for Plan 1
+## Plan 1 不包含的内容
 
-- Watermark service (Plan 2)
-- Crawler (Plan 3)
-- Frontend (Plan 4)
-- Domain cutover, Cloudflare config, monitoring (Plan 5)
-- Backup script (Plan 5)
+- 水印服务（Plan 2）
+- 爬虫（Plan 3）
+- 前端（Plan 4）
+- 域名切换、Cloudflare 配置、监控（Plan 5）
+- 备份脚本（Plan 5）
