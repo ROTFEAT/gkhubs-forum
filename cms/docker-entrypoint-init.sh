@@ -51,6 +51,8 @@ if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY
     wp --allow-root option update mcloud-storage-s3-region "auto"
     wp --allow-root option update mcloud-storage-s3-endpoint "$R2_ENDPOINT"
     wp --allow-root option update mcloud-storage-s3-use-path-style-endpoint "1"
+    # 跳过 setup wizard —— 配置已通过 env 注入，无需 UI 引导
+    wp --allow-root option update mcloud_show_wizard "0"
 fi
 
 echo "[gkhubs-init] done"
