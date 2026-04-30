@@ -1,0 +1,24 @@
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Vendor / build artifacts
+node_modules/
+__pycache__/
+*.pyc
+.next/
+dist/
+build/
+
+# 构建时下载的插件
+cms/plugins-vendor/*
+!cms/plugins-vendor/.gitignore
+
+# 本地环境
+.env
+.env.local
+*.local
+
+# 日志
+*.log
