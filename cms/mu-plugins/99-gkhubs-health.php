@@ -5,6 +5,10 @@
  */
 defined('ABSPATH') || exit;
 
+// 允许 HTTP 下用 App Password（Dokploy 内网 + 流量经 Cloudflare/Traefik，TLS 在边缘终止）。
+// Phase 5 接 Cloudflare HTTPS 后此 filter 仍无害。
+add_filter('wp_is_application_passwords_available', '__return_true');
+
 add_action('rest_api_init', function () {
     register_rest_route('gkhubs/v1', '/health', [
         'methods' => 'GET',
