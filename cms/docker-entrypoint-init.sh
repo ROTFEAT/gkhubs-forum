@@ -27,6 +27,16 @@ if ! wp --allow-root user get "$BOT_USER" >/dev/null 2>&1; then
         --display_name="Crawler Bot"
 fi
 
+# 3b. 给 bot 创建 App Password（仅首次；密码打到日志一次，之后改为重置）
+if ! wp --allow-root option get gkhubs_bot_apppwd_v1 >/dev/null 2>&1; then
+    echo "[gkhubs-init] 给 $BOT_USER 创建 App Password"
+    PWD=$(wp --allow-root user application-password create "$BOT_USER" crawler --porcelain 2>/dev/null || echo "")
+    if [ -n "$PWD" ]; then
+        echo "[gkhubs-init] APP_PASSWORD_FOR_${BOT_USER}=${PWD}"
+        wp --allow-root option update gkhubs_bot_apppwd_v1 1 >/dev/null
+    fi
+fi
+
 # 4. 用 wp option update 配 Media Cloud → R2（比 filter hook 可靠 ——
 #    hook 名跨版本会变。所有 update 都是幂等的。）
 if [ -n "${R2_ENDPOINT:-}" ] && [ -n "${R2_BUCKET:-}" ] && [ -n "${R2_ACCESS_KEY:-}" ] && [ -n "${R2_SECRET:-}" ]; then
