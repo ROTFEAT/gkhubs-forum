@@ -3,7 +3,7 @@
  * URL 改写：guid / source_url / srcset / 文章正文。
  */
 
-namespace GKHubs\R2;
+namespace GKHubs\R2\Pro;
 
 defined('ABSPATH') || exit;
 

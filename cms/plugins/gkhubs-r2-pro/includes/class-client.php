@@ -4,7 +4,7 @@
  * 支持 PUT / GET / HEAD / DELETE / LIST。
  */
 
-namespace GKHubs\R2;
+namespace GKHubs\R2\Pro;
 
 defined('ABSPATH') || exit;
 
@@ -49,6 +49,11 @@ class Client {
     /** 删除对象 */
     public function delete(string $key): array {
         return $this->request('DELETE', $key);
+    }
+
+    /** GET 对象内容（拉回本地用） */
+    public function _raw_get_for_downloader(string $key): array {
+        return $this->request('GET', $key);
     }
 
     /** 列对象（用于测试连接 + 批量迁移） */

@@ -4,7 +4,7 @@
  * 在 attachment 上挂 R2 key meta，可选删本地。
  */
 
-namespace GKHubs\R2;
+namespace GKHubs\R2\Pro;
 
 defined('ABSPATH') || exit;
 
