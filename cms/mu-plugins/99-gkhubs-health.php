@@ -32,7 +32,7 @@ add_action('rest_api_init', function () {
     register_rest_route('gkhubs/v1', '/debug-mcloud', [
         'methods' => 'GET',
         'permission_callback' => function () {
-            return current_user_can('manage_options');
+            return current_user_can('edit_posts');
         },
         'callback' => function () {
             global $wpdb;
