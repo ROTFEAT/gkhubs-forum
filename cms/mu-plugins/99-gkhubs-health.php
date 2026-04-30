@@ -28,6 +28,77 @@ add_action('rest_api_init', function () {
         },
     ]);
 
+    // 临时 debug：列出 Media Cloud 支持的 driver 名 + StorageTool 状态
+    register_rest_route('gkhubs/v1', '/debug-drivers', [
+        'methods' => 'GET',
+        'permission_callback' => function () { return current_user_can('edit_posts'); },
+        'callback' => function () {
+            $base = WP_PLUGIN_DIR . '/ilab-media-tools/classes/Tools/Storage/Driver';
+            $driver_dirs = [];
+            if (is_dir($base)) {
+                foreach (glob($base . '/*', GLOB_ONLYDIR) as $dir) {
+                    $driver_dirs[] = basename($dir);
+                }
+            }
+
+            $info = ['driver_dirs' => $driver_dirs];
+
+            // 尝试找 StorageManager 类
+            $candidates = [
+                '\\MediaCloud\\Plugin\\Tools\\Storage\\StorageManager',
+                '\\ILAB\\MediaCloud\\Tools\\Storage\\StorageManager',
+            ];
+            foreach ($candidates as $cls) {
+                if (class_exists($cls)) {
+                    $info['manager_class'] = $cls;
+                    try {
+                        if (method_exists($cls, 'driverConfigs')) {
+                            $info['driverConfigs_keys'] = array_keys($cls::driverConfigs());
+                        }
+                        if (method_exists($cls, 'drivers')) {
+                            $info['drivers_keys'] = array_keys($cls::drivers());
+                        }
+                    } catch (Throwable $e) {
+                        $info['manager_err'] = $e->getMessage();
+                    }
+                    break;
+                }
+            }
+
+            // StorageTool 状态
+            $tool_candidates = [
+                '\\MediaCloud\\Plugin\\Tools\\Storage\\StorageTool',
+                '\\ILAB\\MediaCloud\\Tools\\Storage\\StorageTool',
+            ];
+            foreach ($tool_candidates as $cls) {
+                if (class_exists($cls)) {
+                    $info['tool_class'] = $cls;
+                    if (function_exists('mediacloud_storage_tool')) {
+                        try {
+                            $tool = mediacloud_storage_tool();
+                            if ($tool && method_exists($tool, 'enabled')) {
+                                $info['tool_enabled'] = $tool->enabled();
+                            }
+                            if ($tool && method_exists($tool, 'envEnabled')) {
+                                $info['tool_envEnabled'] = $tool->envEnabled();
+                            }
+                            if ($tool && method_exists($tool, 'client') && $tool->client()) {
+                                $info['client_class'] = get_class($tool->client());
+                            }
+                        } catch (Throwable $e) {
+                            $info['tool_err'] = $e->getMessage();
+                        }
+                    } else {
+                        $info['tool_helper_missing'] = true;
+                    }
+                    break;
+                }
+            }
+
+            return $info;
+        },
+    ]);
+
     // 临时 debug：dump 当前 Media Cloud / ILAB 相关 option（不含 secret）
     register_rest_route('gkhubs/v1', '/debug-mcloud', [
         'methods' => 'GET',
