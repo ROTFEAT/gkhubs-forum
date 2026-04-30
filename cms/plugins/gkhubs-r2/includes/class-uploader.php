@@ -27,7 +27,13 @@ class Uploader {
         $rel = ltrim(str_replace($base, '', $local_path), '/');
         $cfg = Settings::get();
         $prefix = trim($cfg['prefix'] ?? '', '/');
-        return $prefix === '' ? $rel : $prefix . '/' . $rel;
+        $key = $prefix === '' ? $rel : $prefix . '/' . $rel;
+        /**
+         * Filter: 自定义 R2 对象 key（pro 版可挂这里支持自定义命名规则、年月分桶等）
+         * @param string $key       默认 key
+         * @param string $local_path 本地文件路径
+         */
+        return (string) apply_filters('gkhubs_r2_object_key', $key, $local_path);
     }
 
     public function on_upload(array $upload): array {
@@ -36,16 +42,21 @@ class Uploader {
         if (!$client->ready()) return $upload;
 
         $key = self::r2_key_for($upload['file']);
+
+        /** Action: 上传到 R2 之前（pro 可加图片优化、watermark 等预处理） */
+        do_action('gkhubs_r2_before_upload', $upload['file'], $key, $upload);
+
         $r = $client->put_file($key, $upload['file'], $upload['type'] ?? 'application/octet-stream');
         if (!$r['ok']) {
             error_log('[gkhubs-r2] upload PUT failed: ' . ($r['error'] ?? '?') . ' status=' . ($r['status'] ?? '?'));
             return $upload;
         }
 
-        // 改写返回 URL（如果设了 public_url）
         $upload['url'] = self::public_url_for($key);
-        // 临时存一下，给 mark_attachment_key 用
         update_option('_gkhubs_r2_last_key', $key, false);
+
+        /** Action: 上传到 R2 成功后（pro 可加 CDN purge、telemetry 等） */
+        do_action('gkhubs_r2_after_upload', $key, $upload['file'], $upload);
 
         $cfg = Settings::get();
         if (!empty($cfg['delete_local'])) {
@@ -108,6 +119,13 @@ class Uploader {
     public static function public_url_for(string $key): string {
         $cfg = Settings::get();
         $base = $cfg['public_url'] ?: ($cfg['endpoint'] . '/' . $cfg['bucket']);
-        return rtrim($base, '/') . '/' . ltrim($key, '/');
+        $url = rtrim($base, '/') . '/' . ltrim($key, '/');
+        /**
+         * Filter: 自定义 attachment 公网 URL（pro 可用于生成签名 URL、CDN 域名分发等）
+         * @param string $url 默认 URL
+         * @param string $key R2 对象 key
+         * @param array  $cfg 当前配置
+         */
+        return (string) apply_filters('gkhubs_r2_public_url', $url, $key, $cfg);
     }
 }
