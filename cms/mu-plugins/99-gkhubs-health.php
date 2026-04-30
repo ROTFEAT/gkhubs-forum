@@ -28,6 +28,41 @@ add_action('rest_api_init', function () {
         },
     ]);
 
+    // 临时 debug：读插件入口文件 + autoload 状况
+    register_rest_route('gkhubs/v1', '/debug-entry', [
+        'methods' => 'GET',
+        'permission_callback' => function () { return current_user_can('edit_posts'); },
+        'callback' => function () {
+            $entry = WP_PLUGIN_DIR . '/ilab-media-tools/ilab-media-tools.php';
+            $body = file_exists($entry) ? file_get_contents($entry) : null;
+            $vendor = WP_PLUGIN_DIR . '/ilab-media-tools/vendor';
+            $vendor_exists = is_dir($vendor);
+            $autoload = WP_PLUGIN_DIR . '/ilab-media-tools/vendor/autoload.php';
+            $autoload_exists = file_exists($autoload);
+            // 找入口里所有 require/include + version checks
+            $matches = [];
+            if ($body) {
+                preg_match_all('/(require|include).*?(\'|").*?(\'|")/', $body, $req);
+                $matches['requires'] = $req[0] ?? [];
+                preg_match_all('/version_compare.*?[\'"][\d.]+[\'"]/', $body, $vc);
+                $matches['version_checks'] = $vc[0] ?? [];
+                preg_match_all('/define\([\'"](MEDIA_CLOUD|ILAB_TOOLS_DIR|ILAB_PUB_DIR)[\'"][^)]+\)/', $body, $def);
+                $matches['defines'] = $def[0] ?? [];
+                preg_match_all('/(if|return).{0,80}\bphp_sapi_name\(\)/', $body, $sapi);
+                $matches['sapi_checks'] = $sapi[0] ?? [];
+            }
+            return [
+                'entry_path' => $entry,
+                'entry_size' => $body ? strlen($body) : 0,
+                'vendor_dir_exists' => $vendor_exists,
+                'autoload_exists' => $autoload_exists,
+                'first_500_chars' => $body ? substr($body, 0, 500) : null,
+                'last_500_chars' => $body ? substr($body, -500) : null,
+                'parsed' => $matches,
+            ];
+        },
+    ]);
+
     // 临时 debug：直接探测 wp_handle_upload 等核心 filter 是否被 Media Cloud 注册
     register_rest_route('gkhubs/v1', '/debug-hooks', [
         'methods' => 'GET',
